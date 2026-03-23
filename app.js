@@ -964,6 +964,8 @@ async function saveAICards() {
 let scanRawText = '';
 let scanParsedCards = [];
 
+let scanCropState = null; // { imageData, crop: {x,y,w,h}, containerRect }
+
 function initScanner() {
   document.getElementById('btn-scan-camera').addEventListener('click', openScanCamera);
   document.getElementById('btn-scan-file').addEventListener('click', () => document.getElementById('scan-file-input').click());
@@ -974,14 +976,19 @@ function initScanner() {
   document.getElementById('btn-scan-reparse').addEventListener('click', reparseScannedText);
   document.getElementById('btn-scan-restart').addEventListener('click', resetScanner);
   document.getElementById('btn-scan-save').addEventListener('click', saveScanCards);
+  document.getElementById('btn-crop-retake').addEventListener('click', cropRetake);
+  document.getElementById('btn-crop-confirm').addEventListener('click', cropConfirm);
+  initCropHandles();
 }
 
 function resetScanner() {
   stopCamera();
   scanRawText = '';
   scanParsedCards = [];
+  scanCropState = null;
   document.getElementById('scan-step-source').classList.remove('hidden');
   document.getElementById('scan-step-camera').classList.add('hidden');
+  document.getElementById('scan-step-crop').classList.add('hidden');
   document.getElementById('scan-step-ocr').classList.add('hidden');
   document.getElementById('scan-step-preview').classList.add('hidden');
   document.getElementById('scan-raw-text').classList.add('hidden');
@@ -1008,15 +1015,136 @@ function captureScanPhoto() {
   const imageData = captureFrame(video);
   stopCamera();
   document.getElementById('scan-step-camera').classList.add('hidden');
-  processScannedImage(imageData);
+  showCropPreview(imageData);
 }
 
 function onScanFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
   document.getElementById('scan-step-source').classList.add('hidden');
-  processScannedImage(file);
+  // Load file as data URL for crop preview
+  const reader = new FileReader();
+  reader.onload = () => showCropPreview(reader.result);
+  reader.readAsDataURL(file);
   e.target.value = ''; // reset
+}
+
+function showCropPreview(imageDataUrl) {
+  document.getElementById('scan-step-crop').classList.remove('hidden');
+  const canvas = document.getElementById('scan-crop-canvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    // Fit canvas to container width, maintain aspect ratio
+    const containerWidth = canvas.parentElement.clientWidth;
+    const scale = containerWidth / img.width;
+    canvas.width = img.width;
+    canvas.height = img.height;
+    canvas.style.width = containerWidth + 'px';
+    canvas.style.height = (img.height * scale) + 'px';
+    ctx.drawImage(img, 0, 0);
+
+    // Initialize crop rect (default: 8% margin like the guide frame)
+    const mx = Math.round(img.width * 0.08);
+    const my = Math.round(img.height * 0.08);
+    scanCropState = {
+      imageDataUrl,
+      img,
+      crop: { x: mx, y: my, w: img.width - mx * 2, h: img.height - my * 2 },
+      displayScale: scale
+    };
+    updateCropOverlay();
+  };
+  img.src = imageDataUrl;
+}
+
+function updateCropOverlay() {
+  if (!scanCropState) return;
+  const { crop, displayScale } = scanCropState;
+  const overlay = document.getElementById('scan-crop-overlay');
+  overlay.style.left = (crop.x * displayScale) + 'px';
+  overlay.style.top = (crop.y * displayScale) + 'px';
+  overlay.style.width = (crop.w * displayScale) + 'px';
+  overlay.style.height = (crop.h * displayScale) + 'px';
+}
+
+function initCropHandles() {
+  const handles = document.querySelectorAll('.scan-crop-handle');
+  handles.forEach(handle => {
+    const onStart = (e) => {
+      e.preventDefault();
+      if (!scanCropState) return;
+      const corner = handle.dataset.corner;
+      const container = document.getElementById('scan-crop-canvas');
+      const rect = container.getBoundingClientRect();
+      const scale = scanCropState.displayScale;
+
+      const onMove = (ev) => {
+        const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+        const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+        // Position relative to canvas in image coordinates
+        const px = Math.max(0, Math.min(scanCropState.img.width, (clientX - rect.left) / scale));
+        const py = Math.max(0, Math.min(scanCropState.img.height, (clientY - rect.top) / scale));
+        const c = scanCropState.crop;
+        const minSize = 50;
+
+        if (corner === 'tl') {
+          c.w = Math.max(minSize, c.x + c.w - px);
+          c.h = Math.max(minSize, c.y + c.h - py);
+          c.x = px; c.y = py;
+        } else if (corner === 'tr') {
+          c.w = Math.max(minSize, px - c.x);
+          c.h = Math.max(minSize, c.y + c.h - py);
+          c.y = py;
+        } else if (corner === 'bl') {
+          c.w = Math.max(minSize, c.x + c.w - px);
+          c.h = Math.max(minSize, py - c.y);
+          c.x = px;
+        } else if (corner === 'br') {
+          c.w = Math.max(minSize, px - c.x);
+          c.h = Math.max(minSize, py - c.y);
+        }
+        updateCropOverlay();
+      };
+
+      const onEnd = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    };
+
+    handle.addEventListener('mousedown', onStart);
+    handle.addEventListener('touchstart', onStart, { passive: false });
+  });
+}
+
+function cropRetake() {
+  scanCropState = null;
+  document.getElementById('scan-step-crop').classList.add('hidden');
+  openScanCamera();
+}
+
+function cropConfirm() {
+  if (!scanCropState) return;
+  const { img, crop } = scanCropState;
+  // Crop the image to selected region
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width = Math.round(crop.w);
+  cropCanvas.height = Math.round(crop.h);
+  const ctx = cropCanvas.getContext('2d');
+  ctx.drawImage(img, Math.round(crop.x), Math.round(crop.y),
+    Math.round(crop.w), Math.round(crop.h), 0, 0, cropCanvas.width, cropCanvas.height);
+  const croppedData = cropCanvas.toDataURL('image/png');
+  scanCropState = null;
+  document.getElementById('scan-step-crop').classList.add('hidden');
+  processScannedImage(croppedData);
 }
 
 async function processScannedImage(imageSource) {

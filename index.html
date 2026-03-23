@@ -188,14 +188,36 @@
           </div>
         </div>
 
-        <!-- Camera Preview -->
+        <!-- Camera Preview (fullscreen-style with overlay controls) -->
         <div id="scan-step-camera" class="hidden">
-          <div style="position:relative; border-radius:var(--radius); overflow:hidden; background:#000;">
-            <video id="scan-video" style="width:100%; display:block;" playsinline></video>
+          <div class="scan-camera-container">
+            <video id="scan-video" playsinline></video>
+            <!-- Document guide frame -->
+            <div class="scan-guide-frame"></div>
+            <p class="scan-guide-text">Dokument im Rahmen ausrichten</p>
+            <!-- Overlay controls -->
+            <div class="scan-camera-controls">
+              <button class="scan-btn-cancel" id="btn-scan-cancel-cam">Abbrechen</button>
+              <button class="scan-btn-capture" id="btn-scan-capture"></button>
+              <div style="width:72px"></div><!-- spacer for centering -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 1b: Crop Preview -->
+        <div id="scan-step-crop" class="hidden">
+          <div class="scan-crop-container">
+            <canvas id="scan-crop-canvas"></canvas>
+            <div class="scan-crop-overlay" id="scan-crop-overlay">
+              <div class="scan-crop-handle" data-corner="tl"></div>
+              <div class="scan-crop-handle" data-corner="tr"></div>
+              <div class="scan-crop-handle" data-corner="bl"></div>
+              <div class="scan-crop-handle" data-corner="br"></div>
+            </div>
           </div>
           <div class="flex gap-8 mt-16" style="justify-content:center">
-            <button class="btn btn-secondary" id="btn-scan-cancel-cam">Abbrechen</button>
-            <button class="btn btn-primary" id="btn-scan-capture">Foto aufnehmen</button>
+            <button class="btn btn-secondary" id="btn-crop-retake" style="flex:1">Neu aufnehmen</button>
+            <button class="btn btn-primary" id="btn-crop-confirm" style="flex:2">Zuschneiden & Scannen</button>
           </div>
         </div>
 
