@@ -363,10 +363,27 @@
         </div>
 
         <div class="card">
+          <div class="card-title">Automatisches Backup</div>
+          <div class="flex-between mt-8">
+            <div>
+              <span class="text-sm text-dim" id="backup-status">Kein Backup vorhanden</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="set-auto-backup" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p class="text-sm text-dim mt-8">Speichert nach jeder Änderung automatisch ein Backup im Browser.</p>
+        </div>
+
+        <div class="card">
           <div class="card-title">Daten</div>
           <div class="flex gap-8 mt-8">
-            <button class="btn btn-secondary" id="btn-export" style="flex:1">Exportieren</button>
-            <button class="btn btn-secondary" id="btn-import" style="flex:1">Importieren</button>
+            <button class="btn btn-secondary" id="btn-export" style="flex:1">JSON Export</button>
+            <button class="btn btn-secondary" id="btn-import" style="flex:1">JSON Import</button>
+          </div>
+          <div class="flex gap-8 mt-8">
+            <button class="btn btn-secondary" id="btn-restore-backup" style="flex:1">Backup wiederherstellen</button>
           </div>
         </div>
 

@@ -1,5 +1,51 @@
 // === Import & Export Module ===
 
+// Auto-backup: saves all data to localStorage after each significant change
+async function autoBackup() {
+  try {
+    const enabled = localStorage.getItem('lernapp-auto-backup') !== 'false';
+    if (!enabled) return;
+
+    const data = {
+      version: 1,
+      exported: new Date().toISOString(),
+      decks: await dbGetAll('decks'),
+      cards: await dbGetAll('cards'),
+      reviews: await dbGetAll('reviews'),
+      stats: await dbGetAll('stats'),
+      settings: await getSettings()
+    };
+
+    localStorage.setItem('lernapp-backup', JSON.stringify(data));
+    localStorage.setItem('lernapp-backup-date', data.exported);
+    localStorage.setItem('lernapp-backup-count',
+      (data.decks.length) + ' Decks, ' + (data.cards.length) + ' Karten');
+  } catch (e) {
+    console.warn('Auto-backup failed:', e);
+  }
+}
+
+function getBackupInfo() {
+  const date = localStorage.getItem('lernapp-backup-date');
+  const count = localStorage.getItem('lernapp-backup-count');
+  if (!date) return null;
+  return { date, count };
+}
+
+async function restoreFromBackup() {
+  const raw = localStorage.getItem('lernapp-backup');
+  if (!raw) return 0;
+  const data = JSON.parse(raw);
+  if (!data.decks || !data.cards) throw new Error('Backup ungültig');
+
+  for (const deck of data.decks) await dbPut('decks', deck);
+  for (const card of data.cards) await dbPut('cards', card);
+  if (data.reviews) for (const r of data.reviews) await dbPut('reviews', r);
+  if (data.stats) for (const s of data.stats) await dbPut('stats', s);
+
+  return data.decks.length;
+}
+
 async function exportAllData() {
   const data = {
     version: 1,

@@ -64,8 +64,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Settings
   document.getElementById('btn-save-settings').addEventListener('click', saveAppSettings);
-  document.getElementById('btn-export').addEventListener('click', exportAllData);
+  document.getElementById('btn-export').addEventListener('click', async () => { await exportAllData(); showToast('Export heruntergeladen'); });
   document.getElementById('btn-import').addEventListener('click', triggerImport);
+  document.getElementById('btn-restore-backup').addEventListener('click', restoreBackup);
+  document.getElementById('set-auto-backup').addEventListener('change', (e) => {
+    localStorage.setItem('lernapp-auto-backup', e.target.checked ? 'true' : 'false');
+  });
   document.getElementById('set-theme').addEventListener('change', (e) => applyTheme(e.target.value));
 
   // Confirm modal
@@ -503,6 +507,7 @@ async function saveCard(e) {
 
   editingCardId = null;
   navigateTo('deck-detail');
+  autoBackup();
 }
 
 // === Learn Session ===
@@ -857,6 +862,7 @@ function showSummary(summary) {
   document.getElementById('summary-subtitle').textContent =
     `${summary.total} Karten in ${mins} Min.`;
   navigateTo('summary');
+  autoBackup();
 }
 
 // === AI Generate ===
@@ -957,6 +963,7 @@ async function saveAICards() {
   document.getElementById('ai-topic').value = '';
   showToast(`${count} Karten gespeichert`);
   refreshDeckDetail();
+  autoBackup();
 }
 
 // === Scanner ===
@@ -1269,6 +1276,7 @@ async function saveScanCards() {
   showToast(`${count} Karten gespeichert`);
   resetScanner();
   navigateTo('decks');
+  autoBackup();
 }
 
 // === Statistics ===
@@ -1319,6 +1327,21 @@ async function loadSettings() {
   document.getElementById('set-ollama-key').value = settings.ollamaApiKey || '';
   document.getElementById('set-daily-goal').value = settings.dailyGoal || 20;
   document.getElementById('set-theme').value = settings.theme || 'dark';
+
+  // Auto-backup toggle
+  const autoOn = localStorage.getItem('lernapp-auto-backup') !== 'false';
+  document.getElementById('set-auto-backup').checked = autoOn;
+
+  // Backup status
+  const info = getBackupInfo();
+  const statusEl = document.getElementById('backup-status');
+  if (info) {
+    const d = new Date(info.date);
+    const timeStr = d.toLocaleDateString('de-DE') + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    statusEl.textContent = `Letztes Backup: ${timeStr} (${info.count})`;
+  } else {
+    statusEl.textContent = 'Kein Backup vorhanden';
+  }
 }
 
 async function saveAppSettings() {
@@ -1329,6 +1352,31 @@ async function saveAppSettings() {
     theme: document.getElementById('set-theme').value
   });
   showToast('Einstellungen gespeichert');
+}
+
+async function restoreBackup() {
+  const info = getBackupInfo();
+  if (!info) {
+    showToast('Kein Backup vorhanden');
+    return;
+  }
+  const d = new Date(info.date);
+  const timeStr = d.toLocaleDateString('de-DE') + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  showConfirm(
+    'Backup wiederherstellen',
+    `Backup vom ${timeStr} (${info.count}) wiederherstellen? Vorhandene Daten werden überschrieben.`,
+    async () => {
+      try {
+        const count = await restoreFromBackup();
+        showToast(`${count} Decks wiederhergestellt`);
+        navigateTo('dashboard');
+      } catch (e) {
+        showToast('Fehler: ' + e.message);
+      }
+    },
+    'Wiederherstellen',
+    'btn btn-primary'
+  );
 }
 
 function applyTheme(theme) {
@@ -1362,6 +1410,7 @@ function triggerImport() {
         const count = await importData(file);
         showToast(`${count} Decks importiert`);
         refreshDashboard();
+        autoBackup();
       }
     } catch (err) {
       showToast('Import fehlgeschlagen: ' + err.message);
@@ -1385,6 +1434,7 @@ function showCSVImportDeckChooser(file, decks) {
       const count = await importCSV(file, deckId);
       showToast(`${count} Karten importiert`);
       refreshDashboard();
+      autoBackup();
     } catch (err) {
       showToast('Import fehlgeschlagen: ' + err.message);
     }
@@ -1397,10 +1447,15 @@ function showCSVImportDeckChooser(file, decks) {
 
 // === Confirm Dialog ===
 
-function showConfirm(title, text, callback) {
+function showConfirm(title, text, callback, btnText, btnClass) {
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-text').textContent = text;
   confirmCallback = callback;
+  if (btnText) {
+    const btn = document.getElementById('btn-confirm-yes');
+    btn.textContent = btnText;
+    if (btnClass) btn.className = btnClass;
+  }
   document.getElementById('modal-confirm').classList.add('active');
 }
 
