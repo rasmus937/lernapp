@@ -635,7 +635,9 @@ async function rateAndNext(quality) {
 
 // === Multiple Choice interaction ===
 
-function checkMCAnswer(btn, selected, correct) {
+function checkMCAnswer(btn) {
+  const selected = btn.dataset.answer;
+  const correct = btn.dataset.correct;
   const buttons = document.querySelectorAll('#mc-options button');
   buttons.forEach(b => { b.disabled = true; });
 
@@ -648,7 +650,7 @@ function checkMCAnswer(btn, selected, correct) {
     btn.style.color = '#000';
     // Highlight correct answer
     buttons.forEach(b => {
-      if (b.textContent.trim() === correct) {
+      if (b.dataset.answer === correct) {
         b.style.background = 'var(--success)';
         b.style.color = '#000';
       }
@@ -851,8 +853,9 @@ function showSummary(summary) {
   document.getElementById('summary-correct').textContent = summary.correct;
   document.getElementById('summary-wrong').textContent = summary.wrong;
   document.getElementById('summary-xp').textContent = '+' + summary.xpEarned;
+  const mins = Math.max(1, Math.round(summary.duration / 60000));
   document.getElementById('summary-subtitle').textContent =
-    `${summary.total} Karten in ${Math.round(summary.duration / 60000)} Min.`;
+    `${summary.total} Karten in ${mins} Min.`;
   navigateTo('summary');
 }
 
@@ -900,7 +903,7 @@ async function runAIGenerate() {
     status.innerHTML = `${cards.length} Karten generiert. Prüfen und speichern:`;
 
     preview.innerHTML = cards.map((card, i) => `
-      <div class="card mb-8">
+      <div class="card mb-8" data-ai-index="${i}">
         <div class="flex-between">
           <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
           <button class="btn btn-secondary" style="padding:2px 8px; font-size:11px"
@@ -927,9 +930,16 @@ async function saveAICards() {
   const cards = window._aiGeneratedCards;
   if (!cards || !currentDeckId) return;
 
+  // Only save cards still visible in the DOM
+  const remaining = new Set(
+    [...document.querySelectorAll('#ai-preview .card[data-ai-index]')]
+      .map(el => parseInt(el.dataset.aiIndex))
+  );
+
   let count = 0;
-  for (const card of cards) {
-    if (!card.front) continue;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (!card.front || !remaining.has(i)) continue;
     await createCard({
       deckId: currentDeckId,
       type: card.type || 'term',
@@ -1269,6 +1279,10 @@ function showConfirm(title, text, callback) {
 function closeConfirm() {
   document.getElementById('modal-confirm').classList.remove('active');
   confirmCallback = null;
+  // Reset button to default state
+  const btn = document.getElementById('btn-confirm-yes');
+  btn.textContent = 'Löschen';
+  btn.className = 'btn btn-danger';
 }
 
 // === Toast Notification ===

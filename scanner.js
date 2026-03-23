@@ -153,15 +153,17 @@ function parseOCRText(rawText) {
 // Optional: Use Ollama for smarter parsing
 async function parseWithOllama(rawText) {
   const settings = await getSettings();
-  if (!settings.ollamaUrl || !settings.ollamaApiKey) return null;
+  if (!settings.ollamaUrl) return null;
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (settings.ollamaApiKey) {
+    headers['Authorization'] = 'Bearer ' + settings.ollamaApiKey;
+  }
 
   try {
     const response = await fetch(settings.ollamaUrl + '/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + settings.ollamaApiKey
-      },
+      headers,
       body: JSON.stringify({
         model: 'qwen3:1.7b',
         stream: false,

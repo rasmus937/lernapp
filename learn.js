@@ -130,9 +130,10 @@ function renderMultipleChoice(card, allCards) {
       <div style="font-size:22px; font-weight:600;">${escapeHtml(card.front)}</div>
     </div>
     <div class="mt-16" id="mc-options">
-      ${options.map(opt => `
+      ${options.map((opt, i) => `
         <button class="btn btn-secondary btn-full mb-8" style="text-align:left; padding:16px;"
-                onclick="checkMCAnswer(this, '${escapeAttr(opt)}', '${escapeAttr(correctAnswer)}')"
+                data-answer="${escapeHtml(opt)}" data-correct="${escapeHtml(correctAnswer)}"
+                onclick="checkMCAnswer(this)"
                 ${opt === '—' ? 'disabled' : ''}>
           ${escapeHtml(opt)}
         </button>
@@ -284,12 +285,20 @@ function renderLearnCard(item, allCards) {
 
 function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function escapeAttr(text) {
   if (!text) return '';
-  return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return String(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
 }

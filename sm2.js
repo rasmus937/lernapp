@@ -20,9 +20,11 @@ function sm2(review, quality) {
     repetitions++;
   }
 
-  // Update ease factor
-  easeFactor = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
-  if (easeFactor < 1.3) easeFactor = 1.3;
+  // Update ease factor (only on success per SM-2 spec)
+  if (quality >= 3) {
+    easeFactor = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    if (easeFactor < 1.3) easeFactor = 1.3;
+  }
 
   const now = Date.now();
   const nextReview = now + interval * 24 * 60 * 60 * 1000;

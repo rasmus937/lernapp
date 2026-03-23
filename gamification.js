@@ -22,7 +22,8 @@ async function updateStreak() {
   allStats.sort((a, b) => b.date.localeCompare(a.date));
 
   const today = todayStr();
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const yd = new Date(Date.now() - 86400000);
+  const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,'0')}-${String(yd.getDate()).padStart(2,'0')}`;
 
   // Check if today has activity
   const todayStats = allStats.find(s => s.date === today);
@@ -43,7 +44,7 @@ async function updateStreak() {
   }
 
   for (let i = 0; i < 3650; i++) { // max ~10 years
-    const dateStr = checkDate.toISOString().slice(0, 10);
+    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth()+1).padStart(2,'0')}-${String(checkDate.getDate()).padStart(2,'0')}`;
     const stat = allStats.find(s => s.date === dateStr);
     if (stat && stat.cardsReviewed > 0) {
       streak++;
