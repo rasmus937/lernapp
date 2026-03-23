@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lernapp-v1';
+const CACHE_NAME = 'lernapp-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const ASSETS = [
   './sm2.js',
   './learn.js',
   './gamification.js',
+  './scanner.js',
+  './ollama.js',
   './import-export.js'
 ];
 

@@ -37,6 +37,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-edit-deck').addEventListener('click', () => openDeckModal(currentDeckId));
   document.getElementById('btn-learn-deck').addEventListener('click', startDeckLearn);
 
+  // AI Generate
+  document.getElementById('btn-ai-generate').addEventListener('click', toggleAIPanel);
+  document.getElementById('btn-ai-cancel').addEventListener('click', () => document.getElementById('ai-generate-panel').classList.add('hidden'));
+  document.getElementById('btn-ai-run').addEventListener('click', runAIGenerate);
+
   // Card Editor
   document.getElementById('card-type').addEventListener('change', onCardTypeChange);
   document.getElementById('card-form').addEventListener('submit', saveCard);
@@ -65,6 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (confirmCallback) confirmCallback();
     closeConfirm();
   });
+
+  // Scanner
+  initScanner();
 
   // Register service worker
   if ('serviceWorker' in navigator) {
@@ -117,6 +125,7 @@ function navigateTo(view, options = {}) {
     case 'deck-detail': refreshDeckDetail(); break;
     case 'stats': refreshStats(); break;
     case 'settings': loadSettings(); break;
+    case 'scanner': resetScanner(); break;
   }
 }
 
@@ -525,6 +534,19 @@ function showNextCard() {
     });
   }
 
+  // Focus cloze input if present
+  const clozeInput = document.getElementById('cloze-input');
+  if (clozeInput) {
+    setTimeout(() => clozeInput.focus(), 100);
+    clozeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const btn = clozeInput.closest('.view').querySelector('[onclick^="checkClozeAnswer"]');
+        if (btn) btn.click();
+      }
+    });
+  }
+
   // Setup drag & drop for sort mode
   setupSortDragDrop();
 }
@@ -728,6 +750,44 @@ function checkSortOrder() {
   }
 }
 
+// === Cloze Answer interaction ===
+
+function checkClozeAnswer(correct) {
+  const input = document.getElementById('cloze-input');
+  const feedback = document.getElementById('cloze-feedback');
+  if (!input || !feedback) return;
+
+  const answer = input.value.trim();
+  input.disabled = true;
+  feedback.classList.remove('hidden');
+
+  const isCorrect = answer.toLowerCase() === correct.toLowerCase();
+  const blank = document.getElementById('cloze-blank');
+
+  if (isCorrect) {
+    if (blank) { blank.textContent = correct; blank.style.color = 'var(--success)'; blank.style.fontWeight = '700'; }
+    feedback.innerHTML = `
+      <div class="card" style="border-color:var(--success); text-align:center;">
+        <div style="color:var(--success); font-size:18px; font-weight:700;">Richtig!</div>
+      </div>
+    `;
+    setTimeout(() => rateAndNext(4), 800);
+  } else {
+    if (blank) { blank.textContent = correct; blank.style.color = 'var(--danger)'; blank.style.fontWeight = '700'; }
+    feedback.innerHTML = `
+      <div class="card" style="border-color:var(--danger);">
+        <div style="color:var(--danger); font-weight:700;">Falsch</div>
+        <div class="mt-8">Richtige Antwort: <strong>${escapeHtml(correct)}</strong></div>
+        <div class="text-dim text-sm mt-8">Deine Antwort: ${escapeHtml(answer) || '(leer)'}</div>
+      </div>
+      <div class="rating-buttons mt-16">
+        <button class="rating-btn again" onclick="rateAndNext(0)">Nochmal</button>
+        <button class="rating-btn hard" onclick="rateAndNext(3)">Wusste ich fast</button>
+      </div>
+    `;
+  }
+}
+
 // === Session Summary ===
 
 function showSummary(summary) {
@@ -738,6 +798,283 @@ function showSummary(summary) {
   document.getElementById('summary-subtitle').textContent =
     `${summary.total} Karten in ${Math.round(summary.duration / 60000)} Min.`;
   navigateTo('summary');
+}
+
+// === AI Generate ===
+
+async function toggleAIPanel() {
+  const panel = document.getElementById('ai-generate-panel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    // Check Ollama availability
+    const available = await isOllamaAvailable();
+    if (!available) {
+      document.getElementById('ai-status').classList.remove('hidden');
+      document.getElementById('ai-status').innerHTML =
+        '<span style="color:var(--warning)">Ollama nicht erreichbar. Bitte URL in den Einstellungen konfigurieren.</span>';
+    } else {
+      document.getElementById('ai-status').classList.add('hidden');
+    }
+    document.getElementById('ai-topic').focus();
+  }
+}
+
+async function runAIGenerate() {
+  const topic = document.getElementById('ai-topic').value.trim();
+  if (!topic) { showToast('Bitte ein Thema eingeben'); return; }
+
+  const status = document.getElementById('ai-status');
+  const preview = document.getElementById('ai-preview');
+  const btn = document.getElementById('btn-ai-run');
+
+  status.classList.remove('hidden');
+  status.innerHTML = 'Generiere Karten...';
+  btn.disabled = true;
+
+  try {
+    const deck = await getDeck(currentDeckId);
+    const cards = await generateCardsFromTopic(topic, deck?.type || 'mixed');
+
+    if (cards.length === 0) {
+      status.innerHTML = '<span style="color:var(--warning)">Keine Karten generiert. Versuche ein anderes Thema.</span>';
+      btn.disabled = false;
+      return;
+    }
+
+    status.innerHTML = `${cards.length} Karten generiert. Pruefen und speichern:`;
+
+    preview.innerHTML = cards.map((card, i) => `
+      <div class="card mb-8">
+        <div class="flex-between">
+          <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
+          <button class="btn btn-secondary" style="padding:2px 8px; font-size:11px"
+                  onclick="this.closest('.card').remove()">✕</button>
+        </div>
+        <div class="mt-8" style="font-weight:600">${escapeHtml(card.front)}</div>
+        ${card.steps ? `<div class="text-sm text-dim mt-4">${card.steps.map((s,i) => `${i+1}. ${escapeHtml(s)}`).join('<br>')}</div>` : ''}
+        ${card.back ? `<div class="text-sm text-dim mt-4">${escapeHtml(card.back)}</div>` : ''}
+      </div>
+    `).join('') + `
+      <button class="btn btn-success btn-full mt-8" onclick="saveAICards()">Alle Karten speichern</button>
+    `;
+
+    // Store for saving
+    window._aiGeneratedCards = cards;
+    btn.disabled = false;
+  } catch (err) {
+    status.innerHTML = `<span style="color:var(--danger)">Fehler: ${escapeHtml(err.message)}</span>`;
+    btn.disabled = false;
+  }
+}
+
+async function saveAICards() {
+  const cards = window._aiGeneratedCards;
+  if (!cards || !currentDeckId) return;
+
+  let count = 0;
+  for (const card of cards) {
+    if (!card.front) continue;
+    await createCard({
+      deckId: currentDeckId,
+      type: card.type || 'term',
+      front: card.front,
+      back: card.back || '',
+      steps: card.steps || null,
+      tags: ['ki-generiert']
+    });
+    count++;
+  }
+
+  window._aiGeneratedCards = null;
+  document.getElementById('ai-generate-panel').classList.add('hidden');
+  document.getElementById('ai-preview').innerHTML = '';
+  document.getElementById('ai-topic').value = '';
+  showToast(`${count} Karten gespeichert`);
+  refreshDeckDetail();
+}
+
+// === Scanner ===
+
+let scanRawText = '';
+let scanParsedCards = [];
+
+function initScanner() {
+  document.getElementById('btn-scan-camera').addEventListener('click', openScanCamera);
+  document.getElementById('btn-scan-file').addEventListener('click', () => document.getElementById('scan-file-input').click());
+  document.getElementById('scan-file-input').addEventListener('change', onScanFileSelected);
+  document.getElementById('btn-scan-capture').addEventListener('click', captureScanPhoto);
+  document.getElementById('btn-scan-cancel-cam').addEventListener('click', closeScanCamera);
+  document.getElementById('btn-scan-raw').addEventListener('click', toggleScanRaw);
+  document.getElementById('btn-scan-reparse').addEventListener('click', reparseScannedText);
+  document.getElementById('btn-scan-restart').addEventListener('click', resetScanner);
+  document.getElementById('btn-scan-save').addEventListener('click', saveScanCards);
+}
+
+function resetScanner() {
+  stopCamera();
+  scanRawText = '';
+  scanParsedCards = [];
+  document.getElementById('scan-step-source').classList.remove('hidden');
+  document.getElementById('scan-step-camera').classList.add('hidden');
+  document.getElementById('scan-step-ocr').classList.add('hidden');
+  document.getElementById('scan-step-preview').classList.add('hidden');
+  document.getElementById('scan-raw-text').classList.add('hidden');
+}
+
+async function openScanCamera() {
+  document.getElementById('scan-step-source').classList.add('hidden');
+  document.getElementById('scan-step-camera').classList.remove('hidden');
+  const video = document.getElementById('scan-video');
+  const ok = await startCamera(video);
+  if (!ok) {
+    showToast('Kamera nicht verfuegbar');
+    resetScanner();
+  }
+}
+
+function closeScanCamera() {
+  stopCamera();
+  resetScanner();
+}
+
+function captureScanPhoto() {
+  const video = document.getElementById('scan-video');
+  const imageData = captureFrame(video);
+  stopCamera();
+  document.getElementById('scan-step-camera').classList.add('hidden');
+  processScannedImage(imageData);
+}
+
+function onScanFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('scan-step-source').classList.add('hidden');
+  processScannedImage(file);
+  e.target.value = ''; // reset
+}
+
+async function processScannedImage(imageSource) {
+  document.getElementById('scan-step-ocr').classList.remove('hidden');
+  document.getElementById('scan-ocr-progress').style.width = '0%';
+  document.getElementById('scan-ocr-status').textContent = 'Lade Tesseract.js...';
+
+  try {
+    const text = await runOCR(imageSource, (pct) => {
+      document.getElementById('scan-ocr-progress').style.width = pct + '%';
+      document.getElementById('scan-ocr-status').textContent = `Erkenne Text... ${pct}%`;
+    });
+
+    scanRawText = text;
+    document.getElementById('scan-step-ocr').classList.add('hidden');
+
+    // Try Ollama first, fallback to regex
+    let cards = await parseWithOllama(text);
+    if (!cards || cards.length === 0) {
+      cards = parseOCRText(text);
+    }
+    scanParsedCards = cards;
+
+    showScanPreview();
+  } catch (err) {
+    showToast('OCR fehlgeschlagen: ' + err.message);
+    resetScanner();
+  }
+}
+
+async function showScanPreview() {
+  document.getElementById('scan-step-preview').classList.remove('hidden');
+  document.getElementById('scan-count').textContent = `${scanParsedCards.length} Karten erkannt`;
+  document.getElementById('scan-raw-textarea').value = scanRawText;
+
+  // Render card previews
+  const container = document.getElementById('scan-cards-preview');
+  if (scanParsedCards.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:24px">
+        <p class="text-dim">Keine Karten erkannt. Versuche den Rohtext zu bearbeiten und erneut zu parsen.</p>
+      </div>
+    `;
+  } else {
+    container.innerHTML = scanParsedCards.map((card, i) => `
+      <div class="card" id="scan-card-${i}">
+        <div class="flex-between">
+          <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
+          <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px"
+                  onclick="removeScanCard(${i})">Entfernen</button>
+        </div>
+        <div class="mt-8">
+          <input type="text" class="form-input mb-8" value="${escapeHtml(card.front)}"
+                 onchange="scanParsedCards[${i}].front=this.value" placeholder="Vorderseite"
+                 style="font-size:14px; padding:8px 12px;">
+          ${card.type === 'process' && card.steps ? `
+            <div class="text-sm text-dim mb-8">Schritte:</div>
+            ${card.steps.map((s, si) => `
+              <input type="text" class="form-input mb-8" value="${escapeHtml(s)}"
+                     onchange="scanParsedCards[${i}].steps[${si}]=this.value"
+                     style="font-size:13px; padding:6px 12px;">
+            `).join('')}
+          ` : `
+            <input type="text" class="form-input" value="${escapeHtml(card.back)}"
+                   onchange="scanParsedCards[${i}].back=this.value" placeholder="Rueckseite"
+                   style="font-size:14px; padding:8px 12px;">
+          `}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Fill deck selector
+  const select = document.getElementById('scan-target-deck');
+  const decks = await getAllDecks();
+  select.innerHTML = decks.length === 0
+    ? '<option value="">Kein Deck vorhanden</option>'
+    : decks.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+}
+
+function removeScanCard(index) {
+  scanParsedCards.splice(index, 1);
+  showScanPreview();
+}
+
+function toggleScanRaw() {
+  document.getElementById('scan-raw-text').classList.toggle('hidden');
+}
+
+function reparseScannedText() {
+  scanRawText = document.getElementById('scan-raw-textarea').value;
+  scanParsedCards = parseOCRText(scanRawText);
+  document.getElementById('scan-raw-text').classList.add('hidden');
+  showScanPreview();
+}
+
+async function saveScanCards() {
+  const deckId = document.getElementById('scan-target-deck').value;
+  if (!deckId) {
+    showToast('Bitte zuerst ein Deck erstellen');
+    return;
+  }
+  if (scanParsedCards.length === 0) {
+    showToast('Keine Karten zum Speichern');
+    return;
+  }
+
+  let count = 0;
+  for (const card of scanParsedCards) {
+    if (!card.front) continue;
+    await createCard({
+      deckId,
+      type: card.type || 'vocab',
+      front: card.front,
+      back: card.back || '',
+      steps: card.steps || null,
+      tags: ['scan']
+    });
+    count++;
+  }
+
+  showToast(`${count} Karten gespeichert`);
+  resetScanner();
+  navigateTo('decks');
 }
 
 // === Statistics ===

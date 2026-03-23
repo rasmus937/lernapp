@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>LernApp</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/png" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -88,7 +88,28 @@
             <div class="stat-label">Gemeistert</div>
           </div>
         </div>
-        <button class="btn btn-primary btn-full mb-16" id="btn-learn-deck">Dieses Deck lernen</button>
+        <div class="flex gap-8 mb-16">
+          <button class="btn btn-primary" id="btn-learn-deck" style="flex:1">Dieses Deck lernen</button>
+          <button class="btn btn-secondary" id="btn-ai-generate" style="flex:1">KI generieren</button>
+        </div>
+
+        <!-- AI Generate Panel (inline, toggleable) -->
+        <div id="ai-generate-panel" class="hidden">
+          <div class="card">
+            <div class="card-title">Karten mit KI erstellen</div>
+            <div class="form-group mt-8">
+              <label>Thema</label>
+              <input type="text" class="form-input" id="ai-topic" placeholder="z.B. Calvin-Zyklus, Irregular Verbs, Zellbiologie...">
+            </div>
+            <div class="flex gap-8">
+              <button class="btn btn-secondary" id="btn-ai-cancel" style="flex:1">Abbrechen</button>
+              <button class="btn btn-primary" id="btn-ai-run" style="flex:2">Generieren</button>
+            </div>
+            <div id="ai-status" class="hidden mt-8 text-center text-dim text-sm"></div>
+            <div id="ai-preview" class="mt-16"></div>
+          </div>
+        </div>
+
         <div id="card-list"></div>
         <div id="cards-empty" class="empty-state hidden">
           <div class="empty-icon">🃏</div>
@@ -146,6 +167,75 @@
             <button type="submit" class="btn btn-primary" style="flex:2">Speichern</button>
           </div>
         </form>
+      </section>
+
+      <!-- Scanner View -->
+      <section id="view-scanner" class="view">
+        <h2 style="font-size:18px; font-weight:700;" class="mb-16">Vokabeln scannen</h2>
+
+        <!-- Step 1: Image Source -->
+        <div id="scan-step-source">
+          <div class="card text-center" style="padding:32px;">
+            <div style="font-size:48px; margin-bottom:16px; opacity:0.6">📷</div>
+            <p class="text-dim mb-16">Fotografiere eine Vokabelliste oder waehle ein Bild aus</p>
+            <div class="flex gap-8" style="justify-content:center">
+              <button class="btn btn-primary" id="btn-scan-camera">Kamera</button>
+              <button class="btn btn-secondary" id="btn-scan-file">Bild waehlen</button>
+            </div>
+            <input type="file" id="scan-file-input" accept="image/*" style="display:none">
+          </div>
+        </div>
+
+        <!-- Camera Preview -->
+        <div id="scan-step-camera" class="hidden">
+          <div style="position:relative; border-radius:var(--radius); overflow:hidden; background:#000;">
+            <video id="scan-video" style="width:100%; display:block;" playsinline></video>
+          </div>
+          <div class="flex gap-8 mt-16" style="justify-content:center">
+            <button class="btn btn-secondary" id="btn-scan-cancel-cam">Abbrechen</button>
+            <button class="btn btn-primary" id="btn-scan-capture">Foto aufnehmen</button>
+          </div>
+        </div>
+
+        <!-- Step 2: OCR Processing -->
+        <div id="scan-step-ocr" class="hidden">
+          <div class="card text-center" style="padding:32px;">
+            <div style="font-size:32px; margin-bottom:12px;">🔍</div>
+            <p class="mb-8">Text wird erkannt...</p>
+            <div class="progress-bar">
+              <div class="progress-fill" id="scan-ocr-progress" style="width:0%"></div>
+            </div>
+            <p class="text-dim text-sm mt-8" id="scan-ocr-status">Lade Tesseract.js...</p>
+          </div>
+        </div>
+
+        <!-- Step 3: Preview & Edit -->
+        <div id="scan-step-preview" class="hidden">
+          <div class="flex-between mb-8">
+            <span class="text-sm text-dim" id="scan-count">0 Karten erkannt</span>
+            <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px" id="btn-scan-raw">Rohtext</button>
+          </div>
+
+          <!-- Raw text (toggleable) -->
+          <div id="scan-raw-text" class="hidden">
+            <textarea class="form-textarea" id="scan-raw-textarea" style="min-height:150px; font-size:13px; font-family:monospace;"></textarea>
+            <button class="btn btn-secondary btn-full mt-8" id="btn-scan-reparse">Erneut parsen</button>
+          </div>
+
+          <!-- Card preview list -->
+          <div id="scan-cards-preview"></div>
+
+          <!-- Target deck selection -->
+          <div class="form-group mt-16">
+            <label>In Deck speichern</label>
+            <select class="form-select" id="scan-target-deck"></select>
+          </div>
+
+          <div class="flex gap-8 mt-8">
+            <button class="btn btn-secondary" id="btn-scan-restart" style="flex:1">Neu scannen</button>
+            <button class="btn btn-primary" id="btn-scan-save" style="flex:2">Karten speichern</button>
+          </div>
+        </div>
       </section>
 
       <!-- Learn Session View -->
@@ -331,6 +421,8 @@
   <script src="sm2.js"></script>
   <script src="gamification.js"></script>
   <script src="learn.js"></script>
+  <script src="scanner.js"></script>
+  <script src="ollama.js"></script>
   <script src="import-export.js"></script>
   <script src="app.js"></script>
 </body>

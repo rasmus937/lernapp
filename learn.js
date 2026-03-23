@@ -183,24 +183,87 @@ function renderSortSteps(card) {
   `;
 }
 
+function renderCloze(card) {
+  // Generate a cloze deletion from the back text
+  let text = card.back || '';
+  let answer = '';
+
+  if (card.type === 'process' && card.steps && card.steps.length > 0) {
+    // For processes: blank out a random step
+    const idx = Math.floor(Math.random() * card.steps.length);
+    answer = card.steps[idx];
+    const display = card.steps.map((s, i) =>
+      i === idx ? `<span class="cloze-blank" id="cloze-blank">______</span>` : escapeHtml(s)
+    ).map((s, i) => `${i + 1}. ${s}`).join('<br>');
+
+    return `
+      <div class="card" style="text-align:center; padding:24px;">
+        <div style="font-size:18px; font-weight:600; margin-bottom:12px;">${escapeHtml(card.front)}</div>
+        <div class="text-dim" style="font-size:15px; line-height:1.8; text-align:left;">${display}</div>
+      </div>
+      <div class="form-group mt-16">
+        <input type="text" class="form-input" id="cloze-input" placeholder="Fehlenden Schritt eingeben..."
+               style="font-size:16px; text-align:center;" autocomplete="off">
+      </div>
+      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Pruefen</button>
+      <div id="cloze-feedback" class="hidden mt-16"></div>
+    `;
+  }
+
+  // For terms/vocab: blank out a key word from the back
+  const words = text.split(/\s+/);
+  if (words.length >= 2) {
+    // Pick a meaningful word (longer than 3 chars, not a stop word)
+    const stopWords = ['der', 'die', 'das', 'ein', 'eine', 'und', 'oder', 'ist', 'sind', 'von', 'mit', 'den', 'dem', 'des', 'auf', 'für', 'als', 'bei', 'nach', 'aus', 'zum', 'zur', 'the', 'a', 'an', 'and', 'or', 'is', 'are', 'of', 'with', 'for', 'to', 'in', 'on', 'at', 'by'];
+    const candidates = words.filter(w => w.length > 3 && !stopWords.includes(w.toLowerCase()));
+    const target = candidates.length > 0
+      ? candidates[Math.floor(Math.random() * candidates.length)]
+      : words[Math.floor(Math.random() * words.length)];
+    answer = target;
+    const display = text.replace(target, '<span class="cloze-blank" id="cloze-blank">______</span>');
+
+    return `
+      <div class="card" style="text-align:center; padding:24px;">
+        <div style="font-size:16px; font-weight:600; color:var(--accent); margin-bottom:8px;">${escapeHtml(card.front)}</div>
+        <div style="font-size:18px; line-height:1.6;">${display}</div>
+      </div>
+      <div class="form-group mt-16">
+        <input type="text" class="form-input" id="cloze-input" placeholder="Fehlendes Wort eingeben..."
+               style="font-size:16px; text-align:center;" autocomplete="off">
+      </div>
+      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Pruefen</button>
+      <div id="cloze-feedback" class="hidden mt-16"></div>
+    `;
+  }
+
+  // Fallback if text too short
+  return renderFlashcard(card);
+}
+
 // === Choose learn mode based on card type and repetitions ===
 
 function chooseLernMode(card, review, allCards) {
   const { type } = card;
 
-  // Process cards: prefer sort mode
+  // Process cards: flashcard → sort → cloze
   if (type === 'process' && card.steps && card.steps.length >= 2) {
-    // New cards: flashcard first, then sort
     if (review.repetitions === 0) return 'flashcard';
     if (review.repetitions < 3) return Math.random() < 0.5 ? 'sort' : 'flashcard';
-    return 'sort';
+    const r = Math.random();
+    if (r < 0.4) return 'sort';
+    if (r < 0.7) return 'cloze';
+    return 'flashcard';
   }
 
-  // Vocab/Term cards: progress from easy to hard
-  if (review.repetitions === 0) return 'flashcard';         // First time: just show
-  if (review.repetitions === 1) return 'mc';                // Second time: multiple choice
-  if (review.repetitions < 4) return Math.random() < 0.5 ? 'mc' : 'type'; // Mix
-  return 'type';                                             // Advanced: type answer
+  // Vocab/Term cards: flashcard → mc → type/cloze
+  if (review.repetitions === 0) return 'flashcard';
+  if (review.repetitions === 1) return 'mc';
+  if (review.repetitions < 4) {
+    const modes = ['mc', 'type', 'cloze'];
+    return modes[Math.floor(Math.random() * modes.length)];
+  }
+  // Advanced: harder modes
+  return Math.random() < 0.5 ? 'type' : 'cloze';
 }
 
 function renderLearnCard(item, allCards) {
@@ -212,6 +275,7 @@ function renderLearnCard(item, allCards) {
     case 'mc': return renderMultipleChoice(card, allCards);
     case 'type': return renderTypeAnswer(card);
     case 'sort': return renderSortSteps(card);
+    case 'cloze': return renderCloze(card);
     default: return renderFlashcard(card);
   }
 }
