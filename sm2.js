@@ -15,7 +15,7 @@ function sm2(review, quality) {
     } else if (repetitions === 1) {
       interval = 6;
     } else {
-      interval = Math.round(interval * easeFactor);
+      interval = Math.min(3650, Math.round(interval * easeFactor)); // Cap at ~10 years
     }
     repetitions++;
   }

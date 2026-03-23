@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lernapp-v7';
+const CACHE_NAME = 'lernapp-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -39,10 +39,15 @@ self.addEventListener('fetch', e => {
       // Cache-first, fallback to network
       if (cached) return cached;
       return fetch(e.request).then(response => {
-        // Cache new successful responses
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+        // Only cache same-origin, successful responses with valid content types
+        if (response.ok && response.url.startsWith(self.location.origin)) {
+          const ct = response.headers.get('content-type') || '';
+          const safe = ['text/html', 'text/css', 'application/javascript', 'text/javascript',
+                        'image/svg+xml', 'image/png', 'application/json', 'application/manifest+json'];
+          if (safe.some(t => ct.includes(t))) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          }
         }
         return response;
       });

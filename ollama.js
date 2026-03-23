@@ -56,17 +56,20 @@ WICHTIG:
   const data = await response.json();
   const content = data.message?.content || '';
 
-  // Extract JSON array from response
-  const jsonMatch = content.match(/\[[\s\S]*\]/);
+  // Extract JSON array from response (limit to 100KB to prevent DoS)
+  const safecontent = content.slice(0, 100000);
+  const jsonMatch = safecontent.match(/\[[\s\S]*\]/);
   if (!jsonMatch) throw new Error('Ollama hat kein gültiges JSON zurückgegeben');
 
-  const cards = JSON.parse(jsonMatch[0]);
+  const raw = JSON.parse(jsonMatch[0]);
+  if (!Array.isArray(raw)) throw new Error('Erwartetes Array nicht gefunden');
 
-  // Validate and clean
-  return cards.filter(c => c && c.front).map(c => ({
-    type: c.type || 'term',
-    front: String(c.front).trim(),
-    back: String(c.back || '').trim(),
-    steps: Array.isArray(c.steps) ? c.steps.map(s => String(s).trim()) : null
+  // Validate, sanitize and limit to 50 cards
+  const VALID_TYPES = ['vocab', 'term', 'process'];
+  return raw.slice(0, 50).filter(c => c && typeof c === 'object' && c.front).map(c => ({
+    type: VALID_TYPES.includes(c.type) ? c.type : 'term',
+    front: String(c.front).slice(0, 500).trim(),
+    back: String(c.back || '').slice(0, 2000).trim(),
+    steps: Array.isArray(c.steps) ? c.steps.slice(0, 30).map(s => String(s).slice(0, 500).trim()) : null
   }));
 }

@@ -12,9 +12,12 @@ async function autoBackup() {
       decks: await dbGetAll('decks'),
       cards: await dbGetAll('cards'),
       reviews: await dbGetAll('reviews'),
-      stats: await dbGetAll('stats'),
-      settings: await getSettings()
+      stats: await dbGetAll('stats')
     };
+
+    // Exclude API key from localStorage backup for security
+    const settings = await getSettings();
+    data.settings = { ...settings, ollamaApiKey: '' };
 
     localStorage.setItem('lernapp-backup', JSON.stringify(data));
     localStorage.setItem('lernapp-backup-date', data.exported);
@@ -70,37 +73,63 @@ async function exportAllData() {
   URL.revokeObjectURL(url);
 }
 
+// Sanitize an object: only allow whitelisted keys, strip __proto__ etc.
+function sanitizeObj(obj, allowedKeys) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const clean = {};
+  for (const key of allowedKeys) {
+    if (key in obj) clean[key] = obj[key];
+  }
+  return clean;
+}
+
+const DECK_KEYS = ['id', 'name', 'type', 'tags', 'created', 'updated'];
+const CARD_KEYS = ['id', 'deckId', 'type', 'front', 'back', 'steps', 'image', 'tags', 'created'];
+const REVIEW_KEYS = ['cardId', 'interval', 'repetitions', 'easeFactor', 'nextReview', 'lastReview'];
+const STAT_KEYS = ['date', 'cardsReviewed', 'correct', 'wrong', 'xpEarned', 'streak'];
+const IMPORT_MAX_ITEMS = 10000;
+
 async function importData(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        if (e.target.result.length > 50 * 1024 * 1024) {
+          throw new Error('Datei zu groß (max. 50 MB)');
+        }
         const data = JSON.parse(e.target.result);
-        if (!data.version || !data.decks || !data.cards) {
+        if (!data.version || !Array.isArray(data.decks) || !Array.isArray(data.cards)) {
           throw new Error('Ungültige Datei');
         }
+        if (data.decks.length > IMPORT_MAX_ITEMS || data.cards.length > IMPORT_MAX_ITEMS) {
+          throw new Error(`Zu viele Einträge (max. ${IMPORT_MAX_ITEMS})`);
+        }
 
-        // Import decks
+        // Import decks (sanitized)
         for (const deck of data.decks) {
-          await dbPut('decks', deck);
+          const clean = sanitizeObj(deck, DECK_KEYS);
+          if (clean && clean.id && clean.name) await dbPut('decks', clean);
         }
 
-        // Import cards
+        // Import cards (sanitized)
         for (const card of data.cards) {
-          await dbPut('cards', card);
+          const clean = sanitizeObj(card, CARD_KEYS);
+          if (clean && clean.id && clean.deckId && clean.front) await dbPut('cards', clean);
         }
 
-        // Import reviews
-        if (data.reviews) {
+        // Import reviews (sanitized)
+        if (Array.isArray(data.reviews)) {
           for (const review of data.reviews) {
-            await dbPut('reviews', review);
+            const clean = sanitizeObj(review, REVIEW_KEYS);
+            if (clean && clean.cardId) await dbPut('reviews', clean);
           }
         }
 
-        // Import stats
-        if (data.stats) {
+        // Import stats (sanitized)
+        if (Array.isArray(data.stats)) {
           for (const stat of data.stats) {
-            await dbPut('stats', stat);
+            const clean = sanitizeObj(stat, STAT_KEYS);
+            if (clean && clean.date) await dbPut('stats', clean);
           }
         }
 

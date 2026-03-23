@@ -8,6 +8,8 @@ function loadTesseract() {
     if (window.Tesseract) { resolve(window.Tesseract); return; }
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+    script.crossOrigin = 'anonymous';
     script.onload = () => resolve(window.Tesseract);
     script.onerror = () => reject(new Error('Tesseract.js konnte nicht geladen werden'));
     document.head.appendChild(script);
@@ -21,10 +23,15 @@ async function startCamera(videoEl) {
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
     });
     videoEl.srcObject = scannerStream;
-    videoEl.play();
+    await videoEl.play();
     return true;
   } catch (err) {
     console.error('Camera error:', err);
+    // Clean up stream if play() failed after getUserMedia() succeeded
+    if (scannerStream) {
+      scannerStream.getTracks().forEach(t => t.stop());
+      scannerStream = null;
+    }
     return false;
   }
 }
@@ -66,7 +73,7 @@ async function runOCR(imageSource, progressCallback) {
 
 // Parse OCR text into card candidates
 function parseOCRText(rawText) {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1 && l.length < 500);
   const cards = [];
 
   // Common separator patterns for vocabulary lists
@@ -179,11 +186,20 @@ ${rawText}`
     });
 
     const data = await response.json();
-    const content = data.message?.content || '';
+    const content = (data.message?.content || '').slice(0, 100000);
     // Extract JSON from response
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const raw = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(raw)) return null;
+      // Sanitize: only allow expected fields
+      const VALID_TYPES = ['vocab', 'term', 'process'];
+      return raw.slice(0, 50).filter(c => c && typeof c === 'object' && c.front).map(c => ({
+        type: VALID_TYPES.includes(c.type) ? c.type : 'vocab',
+        front: String(c.front).slice(0, 500).trim(),
+        back: String(c.back || '').slice(0, 2000).trim(),
+        steps: Array.isArray(c.steps) ? c.steps.slice(0, 30).map(s => String(s).slice(0, 500).trim()) : null
+      }));
     }
   } catch (err) {
     console.warn('Ollama parsing failed:', err);

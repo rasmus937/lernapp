@@ -82,6 +82,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Scanner
   initScanner();
 
+  // Global event delegation for dynamic elements
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = el.dataset.action;
+    const id = el.dataset.id;
+    switch (action) {
+      case 'open-deck': openDeckDetail(id); break;
+      case 'edit-card': openCardEditor(id); break;
+      case 'delete-card': e.stopPropagation(); confirmDeleteCard(id); break;
+      case 'remove-scan-card': removeScanCard(parseInt(el.dataset.index)); break;
+    }
+  });
+
+  // Delegated input change for scan card editing
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (!el.dataset.scanField) return;
+    const i = parseInt(el.dataset.index);
+    if (i < 0 || i >= scanParsedCards.length) return;
+    const field = el.dataset.scanField;
+    if (field === 'front') scanParsedCards[i].front = el.value;
+    else if (field === 'back') scanParsedCards[i].back = el.value;
+    else if (field === 'step') {
+      const si = parseInt(el.dataset.step);
+      if (scanParsedCards[i].steps && si >= 0 && si < scanParsedCards[i].steps.length) {
+        scanParsedCards[i].steps[si] = el.value;
+      }
+    }
+  });
+
   // Register service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -201,7 +232,7 @@ async function refreshDashboard() {
     const icon = getDeckIcon(deck.type);
 
     html += `
-      <div class="deck-item" onclick="openDeckDetail('${deck.id}')">
+      <div class="deck-item" data-action="open-deck" data-id="${escapeHtml(deck.id)}">
         <div class="deck-icon">${icon}</div>
         <div class="deck-info">
           <div class="deck-name">${escapeHtml(deck.name)}</div>
@@ -236,7 +267,7 @@ async function refreshDeckList() {
     const icon = getDeckIcon(deck.type);
 
     html += `
-      <div class="deck-item" onclick="openDeckDetail('${deck.id}')">
+      <div class="deck-item" data-action="open-deck" data-id="${escapeHtml(deck.id)}">
         <div class="deck-icon">${icon}</div>
         <div class="deck-info">
           <div class="deck-name">${escapeHtml(deck.name)}</div>
@@ -354,7 +385,7 @@ async function refreshDeckDetail() {
     const typeLabel = card.type === 'vocab' ? 'Vokabel' : card.type === 'term' ? 'Begriff' : 'Prozess';
 
     html += `
-      <div class="card" style="cursor:pointer" onclick="openCardEditor('${card.id}')">
+      <div class="card" style="cursor:pointer" data-action="edit-card" data-id="${escapeHtml(card.id)}">
         <div class="flex-between">
           <div>
             <div class="card-title">${escapeHtml(card.front)}</div>
@@ -368,7 +399,7 @@ async function refreshDeckDetail() {
         <div class="flex-between mt-8">
           <span class="text-sm text-dim">Nächste: ${review ? formatInterval(review.interval) : 'jetzt'}</span>
           <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px"
-                  onclick="event.stopPropagation(); confirmDeleteCard('${card.id}')">Löschen</button>
+                  data-action="delete-card" data-id="${escapeHtml(card.id)}">Löschen</button>
         </div>
       </div>
     `;
@@ -1197,26 +1228,26 @@ async function showScanPreview() {
     `;
   } else {
     container.innerHTML = scanParsedCards.map((card, i) => `
-      <div class="card" id="scan-card-${i}">
+      <div class="card" data-scan-index="${i}">
         <div class="flex-between">
           <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
           <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px"
-                  onclick="removeScanCard(${i})">Entfernen</button>
+                  data-action="remove-scan-card" data-index="${i}">Entfernen</button>
         </div>
         <div class="mt-8">
           <input type="text" class="form-input mb-8" value="${escapeHtml(card.front)}"
-                 onchange="scanParsedCards[${i}].front=this.value" placeholder="Vorderseite"
+                 data-scan-field="front" data-index="${i}" placeholder="Vorderseite"
                  style="font-size:14px; padding:8px 12px;">
           ${card.type === 'process' && card.steps ? `
             <div class="text-sm text-dim mb-8">Schritte:</div>
             ${card.steps.map((s, si) => `
               <input type="text" class="form-input mb-8" value="${escapeHtml(s)}"
-                     onchange="scanParsedCards[${i}].steps[${si}]=this.value"
+                     data-scan-field="step" data-index="${i}" data-step="${si}"
                      style="font-size:13px; padding:6px 12px;">
             `).join('')}
           ` : `
             <input type="text" class="form-input" value="${escapeHtml(card.back)}"
-                   onchange="scanParsedCards[${i}].back=this.value" placeholder="Rückseite"
+                   data-scan-field="back" data-index="${i}" placeholder="Rückseite"
                    style="font-size:14px; padding:8px 12px;">
           `}
         </div>
@@ -1345,11 +1376,29 @@ async function loadSettings() {
 }
 
 async function saveAppSettings() {
+  const ollamaUrl = document.getElementById('set-ollama-url').value.trim();
+  // Validate Ollama URL: must be HTTPS (or localhost for dev)
+  if (ollamaUrl) {
+    try {
+      const url = new URL(ollamaUrl);
+      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {
+        showToast('Ollama URL muss HTTPS verwenden');
+        return;
+      }
+    } catch {
+      showToast('Ungültige Ollama URL');
+      return;
+    }
+  }
+
+  const theme = document.getElementById('set-theme').value;
+  if (!['dark', 'light'].includes(theme)) return;
+
   await saveSettings({
-    ollamaUrl: document.getElementById('set-ollama-url').value.trim(),
+    ollamaUrl,
     ollamaApiKey: document.getElementById('set-ollama-key').value.trim(),
-    dailyGoal: parseInt(document.getElementById('set-daily-goal').value) || 20,
-    theme: document.getElementById('set-theme').value
+    dailyGoal: Math.min(200, Math.max(5, parseInt(document.getElementById('set-daily-goal').value) || 20)),
+    theme
   });
   showToast('Einstellungen gespeichert');
 }
