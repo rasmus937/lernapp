@@ -5,6 +5,13 @@ const DB_VERSION = 1;
 
 let _db = null;
 
+// Request persistent storage so browser won't auto-evict IndexedDB
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().then(granted => {
+    if (granted) console.log('Storage: persistent');
+  });
+}
+
 function openDB() {
   if (_db) return Promise.resolve(_db);
   return new Promise((resolve, reject) => {
