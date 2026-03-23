@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#16213e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>LernApp</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <h1 id="header-title">LernApp</h1>
+      <button class="header-btn" id="header-action" style="display:none"></button>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main">
+      <!-- Dashboard View -->
+      <section id="view-dashboard" class="view active">
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="stat-value" id="dash-due">0</div>
+            <div class="stat-label">Faellig</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="dash-streak">0</div>
+            <div class="stat-label">Streak</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="dash-xp">0</div>
+            <div class="stat-label">XP heute</div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full btn-large mt-16" id="btn-start-learn">
+          Jetzt lernen
+        </button>
+
+        <div class="mt-24">
+          <div class="flex-between mb-8">
+            <h2 style="font-size:16px; font-weight:700;">Deine Decks</h2>
+          </div>
+          <div id="dash-decks"></div>
+        </div>
+      </section>
+
+      <!-- Decks View -->
+      <section id="view-decks" class="view">
+        <div class="flex-between mb-16">
+          <h2 style="font-size:18px; font-weight:700;">Bibliothek</h2>
+          <button class="btn btn-primary" id="btn-add-deck">+ Neues Deck</button>
+        </div>
+        <div id="deck-list"></div>
+        <div id="deck-empty" class="empty-state hidden">
+          <div class="empty-icon">📚</div>
+          <p>Noch keine Decks vorhanden</p>
+          <button class="btn btn-primary" id="btn-add-deck-empty">Erstes Deck erstellen</button>
+        </div>
+      </section>
+
+      <!-- Deck Detail View -->
+      <section id="view-deck-detail" class="view">
+        <div class="flex-between mb-16">
+          <h2 style="font-size:18px; font-weight:700;" id="deck-detail-title"></h2>
+          <div class="flex gap-8">
+            <button class="btn btn-secondary" id="btn-edit-deck">Bearbeiten</button>
+            <button class="btn btn-primary" id="btn-add-card">+ Karte</button>
+          </div>
+        </div>
+        <div class="stat-row mb-16">
+          <div class="stat-box">
+            <div class="stat-value" id="detail-total">0</div>
+            <div class="stat-label">Gesamt</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="detail-due">0</div>
+            <div class="stat-label">Faellig</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="detail-mastered">0</div>
+            <div class="stat-label">Gemeistert</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full mb-16" id="btn-learn-deck">Dieses Deck lernen</button>
+        <div id="card-list"></div>
+        <div id="cards-empty" class="empty-state hidden">
+          <div class="empty-icon">🃏</div>
+          <p>Noch keine Karten in diesem Deck</p>
+          <button class="btn btn-primary" id="btn-add-card-empty">Erste Karte erstellen</button>
+        </div>
+      </section>
+
+      <!-- Card Editor View -->
+      <section id="view-card-editor" class="view">
+        <h2 style="font-size:18px; font-weight:700;" id="card-editor-title" class="mb-16">Neue Karte</h2>
+        <form id="card-form">
+          <div class="form-group">
+            <label>Kartentyp</label>
+            <select class="form-select" id="card-type">
+              <option value="vocab">Vokabel</option>
+              <option value="term">Fachbegriff</option>
+              <option value="process">Prozess</option>
+            </select>
+          </div>
+
+          <!-- Vocab / Term fields -->
+          <div id="fields-vocab-term">
+            <div class="form-group">
+              <label id="label-front">Vorderseite</label>
+              <input type="text" class="form-input" id="card-front" placeholder="Wort oder Begriff">
+            </div>
+            <div class="form-group">
+              <label id="label-back">Rueckseite</label>
+              <textarea class="form-textarea" id="card-back" placeholder="Uebersetzung oder Definition"></textarea>
+            </div>
+          </div>
+
+          <!-- Process fields -->
+          <div id="fields-process" class="hidden">
+            <div class="form-group">
+              <label>Prozess-Titel</label>
+              <input type="text" class="form-input" id="process-title" placeholder="z.B. Calvin-Zyklus">
+            </div>
+            <div class="form-group">
+              <label>Schritte</label>
+              <div id="process-steps"></div>
+              <button type="button" class="btn btn-secondary btn-full mt-8" id="btn-add-step">+ Schritt hinzufuegen</button>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div class="form-group">
+            <label>Tags (kommagetrennt)</label>
+            <input type="text" class="form-input" id="card-tags" placeholder="z.B. biologie, semester2">
+          </div>
+
+          <div class="flex gap-8 mt-16">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-card" style="flex:1">Abbrechen</button>
+            <button type="submit" class="btn btn-primary" style="flex:2">Speichern</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Learn Session View -->
+      <section id="view-learn" class="view">
+        <div class="flex-between mb-16">
+          <span class="text-sm text-dim" id="learn-progress">0 / 0</span>
+          <button class="btn btn-secondary" id="btn-end-session" style="padding:8px 16px; font-size:13px">Beenden</button>
+        </div>
+        <div class="progress-bar mb-16">
+          <div class="progress-fill" id="learn-progress-bar" style="width:0%"></div>
+        </div>
+        <div id="learn-content"></div>
+      </section>
+
+      <!-- Session Summary View -->
+      <section id="view-summary" class="view">
+        <div class="text-center mt-24">
+          <div style="font-size:48px; margin-bottom:16px;">🎉</div>
+          <h2 style="font-size:22px; font-weight:700; margin-bottom:8px;">Session fertig!</h2>
+          <p class="text-dim" id="summary-subtitle"></p>
+        </div>
+        <div class="stat-row mt-24">
+          <div class="stat-box">
+            <div class="stat-value" id="summary-correct" style="color:var(--success)">0</div>
+            <div class="stat-label">Richtig</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="summary-wrong" style="color:var(--danger)">0</div>
+            <div class="stat-label">Falsch</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="summary-xp">0</div>
+            <div class="stat-label">XP</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full btn-large mt-24" id="btn-summary-done">Weiter</button>
+      </section>
+
+      <!-- Stats View -->
+      <section id="view-stats" class="view">
+        <h2 style="font-size:18px; font-weight:700;" class="mb-16">Statistiken</h2>
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="stat-value" id="stats-total-cards">0</div>
+            <div class="stat-label">Karten gesamt</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="stats-mastered">0</div>
+            <div class="stat-label">Gemeistert</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="stat-value" id="stats-streak">0</div>
+            <div class="stat-label">Streak (Tage)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="stats-total-xp">0</div>
+            <div class="stat-label">XP gesamt</div>
+          </div>
+        </div>
+        <div class="card mt-16">
+          <div class="card-title">Letzte 7 Tage</div>
+          <div id="stats-week" class="mt-8"></div>
+        </div>
+      </section>
+
+      <!-- Settings View -->
+      <section id="view-settings" class="view">
+        <h2 style="font-size:18px; font-weight:700;" class="mb-16">Einstellungen</h2>
+
+        <div class="card">
+          <div class="card-title">Ollama Cloud</div>
+          <div class="form-group mt-8">
+            <label>API URL</label>
+            <input type="url" class="form-input" id="set-ollama-url" placeholder="https://...">
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" class="form-input" id="set-ollama-key" placeholder="API Key">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Lernen</div>
+          <div class="form-group mt-8">
+            <label>Taegliches Kartenziel</label>
+            <input type="number" class="form-input" id="set-daily-goal" value="20" min="5" max="200">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Darstellung</div>
+          <div class="form-group mt-8">
+            <label>Theme</label>
+            <select class="form-select" id="set-theme">
+              <option value="dark">Dunkel</option>
+              <option value="light">Hell</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Daten</div>
+          <div class="flex gap-8 mt-8">
+            <button class="btn btn-secondary" id="btn-export" style="flex:1">Exportieren</button>
+            <button class="btn btn-secondary" id="btn-import" style="flex:1">Importieren</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full mt-16" id="btn-save-settings">Einstellungen speichern</button>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav id="nav">
+      <button class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">🏠</span>
+        Home
+      </button>
+      <button class="nav-item" data-view="decks">
+        <span class="nav-icon">📚</span>
+        Decks
+      </button>
+      <button class="nav-item" data-view="scanner">
+        <span class="nav-icon">📷</span>
+        Scan
+      </button>
+      <button class="nav-item" data-view="stats">
+        <span class="nav-icon">📊</span>
+        Stats
+      </button>
+      <button class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙️</span>
+        Mehr
+      </button>
+    </nav>
+
+    <!-- Deck Modal -->
+    <div class="modal-overlay" id="modal-deck">
+      <div class="modal">
+        <div class="modal-title" id="modal-deck-title">Neues Deck</div>
+        <form id="deck-form">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" class="form-input" id="deck-name" placeholder="z.B. Englisch B2" required>
+          </div>
+          <div class="form-group">
+            <label>Typ</label>
+            <select class="form-select" id="deck-type">
+              <option value="mixed">Gemischt</option>
+              <option value="vocab">Vokabeln</option>
+              <option value="terms">Fachbegriffe</option>
+              <option value="process">Prozesse</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tags (kommagetrennt)</label>
+            <input type="text" class="form-input" id="deck-tags" placeholder="z.B. englisch, schule">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-deck">Abbrechen</button>
+            <button type="submit" class="btn btn-primary">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal-overlay" id="modal-confirm">
+      <div class="modal">
+        <div class="modal-title" id="confirm-title">Bestaetigen</div>
+        <p id="confirm-text"></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="btn-confirm-no">Abbrechen</button>
+          <button class="btn btn-danger" id="btn-confirm-yes">Loeschen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="db.js"></script>
+  <script src="sm2.js"></script>
+  <script src="gamification.js"></script>
+  <script src="learn.js"></script>
+  <script src="import-export.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
