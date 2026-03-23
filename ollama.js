@@ -58,7 +58,7 @@ WICHTIG:
 
   // Extract JSON array from response
   const jsonMatch = content.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Ollama hat kein gueltiges JSON zurueckgegeben');
+  if (!jsonMatch) throw new Error('Ollama hat kein gültiges JSON zurückgegeben');
 
   const cards = JSON.parse(jsonMatch[0]);
 

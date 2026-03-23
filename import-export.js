@@ -31,7 +31,7 @@ async function importData(file) {
       try {
         const data = JSON.parse(e.target.result);
         if (!data.version || !data.decks || !data.cards) {
-          throw new Error('Ungueltige Datei');
+          throw new Error('Ungültige Datei');
         }
 
         // Import decks

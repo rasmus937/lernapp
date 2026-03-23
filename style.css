@@ -81,6 +81,12 @@ html, body {
   background: var(--bg-input);
 }
 
+#header-back {
+  font-size: 24px;
+  padding: 4px 8px;
+  margin-right: 4px;
+}
+
 #main {
   flex: 1;
   overflow-y: auto;
@@ -599,6 +605,33 @@ html, body {
   font-weight: 600;
   text-align: center;
 }
+
+/* === Animations === */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.view.active { animation: fadeIn 0.2s ease; }
+
+.card { animation: slideUp 0.15s ease; }
+
+.stat-value { transition: all 0.3s ease; }
+
+.streak-badge { animation: pulse 2s infinite; }
+
+/* Smooth page transitions */
+#main { scroll-behavior: smooth; }
 
 /* === Utilities === */
 .mt-8 { margin-top: 8px; }

@@ -22,6 +22,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Header back button
+  document.getElementById('header-back').addEventListener('click', navigateBack);
+
   // Dashboard
   document.getElementById('btn-start-learn').addEventListener('click', startGlobalLearn);
 
@@ -36,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add-card-empty').addEventListener('click', () => openCardEditor());
   document.getElementById('btn-edit-deck').addEventListener('click', () => openDeckModal(currentDeckId));
   document.getElementById('btn-learn-deck').addEventListener('click', startDeckLearn);
+  document.getElementById('btn-delete-deck').addEventListener('click', confirmDeleteDeck);
 
   // AI Generate
   document.getElementById('btn-ai-generate').addEventListener('click', toggleAIPanel);
@@ -114,6 +118,15 @@ function navigateTo(view, options = {}) {
   };
   document.getElementById('header-title').textContent = titles[view] || 'LernApp';
 
+  // Show/hide back button for sub-views
+  const backBtn = document.getElementById('header-back');
+  const subViews = ['deck-detail', 'card-editor', 'learn', 'summary'];
+  if (subViews.includes(view)) {
+    backBtn.classList.remove('hidden');
+  } else {
+    backBtn.classList.add('hidden');
+  }
+
   // Show/hide bottom nav during learn session
   document.getElementById('nav').style.display =
     (view === 'learn' || view === 'summary') ? 'none' : 'flex';
@@ -150,6 +163,18 @@ async function refreshDashboard() {
   document.getElementById('dash-due').textContent = dueCards.length;
   document.getElementById('dash-streak').textContent = streak;
   document.getElementById('dash-xp').textContent = stats.xpEarned;
+
+  // Disable learn button if nothing due
+  const learnBtn = document.getElementById('btn-start-learn');
+  if (dueCards.length === 0) {
+    learnBtn.textContent = 'Keine fälligen Karten';
+    learnBtn.disabled = true;
+    learnBtn.style.opacity = '0.5';
+  } else {
+    learnBtn.textContent = `Jetzt lernen (${dueCards.length})`;
+    learnBtn.disabled = false;
+    learnBtn.style.opacity = '1';
+  }
 
   // Render deck progress
   const container = document.getElementById('dash-decks');
@@ -333,13 +358,13 @@ async function refreshDeckDetail() {
           </div>
           <div style="text-align:right">
             <span class="tag">${typeLabel}</span>
-            ${isDue ? '<span class="tag tag-accent">faellig</span>' : ''}
+            ${isDue ? '<span class="tag tag-accent">fällig</span>' : ''}
           </div>
         </div>
         <div class="flex-between mt-8">
-          <span class="text-sm text-dim">Naechste: ${review ? formatInterval(review.interval) : 'jetzt'}</span>
+          <span class="text-sm text-dim">Nächste: ${review ? formatInterval(review.interval) : 'jetzt'}</span>
           <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px"
-                  onclick="event.stopPropagation(); confirmDeleteCard('${card.id}')">Loeschen</button>
+                  onclick="event.stopPropagation(); confirmDeleteCard('${card.id}')">Löschen</button>
         </div>
       </div>
     `;
@@ -348,9 +373,19 @@ async function refreshDeckDetail() {
 }
 
 function confirmDeleteCard(cardId) {
-  showConfirm('Karte loeschen?', 'Diese Karte und ihr Lernfortschritt werden unwiderruflich geloescht.', async () => {
+  showConfirm('Karte löschen?', 'Diese Karte und ihr Lernfortschritt werden unwiderruflich gelöscht.', async () => {
     await deleteCard(cardId);
     refreshDeckDetail();
+  });
+}
+
+function confirmDeleteDeck() {
+  if (!currentDeckId) return;
+  showConfirm('Deck löschen?', 'Das gesamte Deck mit allen Karten wird unwiderruflich gelöscht.', async () => {
+    await deleteDeck(currentDeckId);
+    currentDeckId = null;
+    navigateTo('decks');
+    showToast('Deck gelöscht');
   });
 }
 
@@ -397,7 +432,7 @@ function onCardTypeChange() {
     processFields.classList.add('hidden');
     if (type === 'vocab') {
       labelFront.textContent = 'Wort';
-      labelBack.textContent = 'Uebersetzung';
+      labelBack.textContent = 'Übersetzung';
     } else {
       labelFront.textContent = 'Begriff';
       labelBack.textContent = 'Definition';
@@ -475,7 +510,7 @@ async function saveCard(e) {
 async function startGlobalLearn() {
   const dueCards = await getDueCards();
   if (dueCards.length === 0) {
-    showToast('Keine faelligen Karten!');
+    showToast('Keine fälligen Karten!');
     return;
   }
   startLearnSession(dueCards);
@@ -485,25 +520,19 @@ async function startDeckLearn() {
   if (!currentDeckId) return;
   const dueCards = await getDueCards(currentDeckId);
   if (dueCards.length === 0) {
-    showToast('Keine faelligen Karten in diesem Deck!');
+    showToast('Keine fälligen Karten in diesem Deck!');
     return;
   }
   startLearnSession(dueCards, currentDeckId);
 }
 
-function startLearnSession(dueCards, deckId = null) {
-  const settings = getSessionSettings();
-  // Limit to daily goal
-  const limited = dueCards.slice(0, settings.dailyGoal || 20);
+async function startLearnSession(dueCards, deckId = null) {
+  const settings = await getSettings();
+  const dailyGoal = settings.dailyGoal || 20;
+  const limited = dueCards.slice(0, dailyGoal);
   initSession(limited, deckId);
   navigateTo('learn');
   showNextCard();
-}
-
-function getSessionSettings() {
-  // Sync read from DOM if available
-  const goalEl = document.getElementById('set-daily-goal');
-  return { dailyGoal: goalEl ? parseInt(goalEl.value) || 20 : 20 };
 }
 
 function showNextCard() {
@@ -550,6 +579,33 @@ function showNextCard() {
   // Setup drag & drop for sort mode
   setupSortDragDrop();
 }
+
+// === Keyboard shortcuts for learn session ===
+
+document.addEventListener('keydown', (e) => {
+  if (currentView !== 'learn') return;
+  // Don't capture when typing in input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  const fc = document.getElementById('flashcard');
+  const ratingButtons = document.getElementById('rating-buttons');
+
+  // Space or Enter: flip flashcard
+  if ((e.key === ' ' || e.key === 'Enter') && fc && !fc.classList.contains('flipped')) {
+    e.preventDefault();
+    flipCard();
+    return;
+  }
+
+  // 1-4: rate card (after flip)
+  if (ratingButtons && !ratingButtons.classList.contains('hidden')) {
+    const ratingMap = { '1': 0, '2': 3, '3': 4, '4': 5 };
+    if (ratingMap[e.key] !== undefined) {
+      e.preventDefault();
+      rateAndNext(ratingMap[e.key]);
+    }
+  }
+});
 
 // === Flashcard interaction ===
 
@@ -841,7 +897,7 @@ async function runAIGenerate() {
       return;
     }
 
-    status.innerHTML = `${cards.length} Karten generiert. Pruefen und speichern:`;
+    status.innerHTML = `${cards.length} Karten generiert. Prüfen und speichern:`;
 
     preview.innerHTML = cards.map((card, i) => `
       <div class="card mb-8">
@@ -927,7 +983,7 @@ async function openScanCamera() {
   const video = document.getElementById('scan-video');
   const ok = await startCamera(video);
   if (!ok) {
-    showToast('Kamera nicht verfuegbar');
+    showToast('Kamera nicht verfügbar');
     resetScanner();
   }
 }
@@ -1015,7 +1071,7 @@ async function showScanPreview() {
             `).join('')}
           ` : `
             <input type="text" class="form-input" value="${escapeHtml(card.back)}"
-                   onchange="scanParsedCards[${i}].back=this.value" placeholder="Rueckseite"
+                   onchange="scanParsedCards[${i}].back=this.value" placeholder="Rückseite"
                    style="font-size:14px; padding:8px 12px;">
           `}
         </div>
@@ -1157,25 +1213,48 @@ function triggerImport() {
 
     try {
       if (file.name.endsWith('.csv')) {
-        // Need a deck for CSV import
         const decks = await getAllDecks();
         if (decks.length === 0) {
-          showToast('Erstelle zuerst ein Deck fuer den CSV-Import');
+          showToast('Erstelle zuerst ein Deck für den CSV-Import');
           return;
         }
-        // Import into first deck (TODO: let user choose)
-        const count = await importCSV(file, decks[0].id);
-        showToast(`${count} Karten importiert`);
+        // Show deck chooser modal
+        showCSVImportDeckChooser(file, decks);
       } else {
         const count = await importData(file);
         showToast(`${count} Decks importiert`);
+        refreshDashboard();
       }
-      refreshDashboard();
     } catch (err) {
       showToast('Import fehlgeschlagen: ' + err.message);
     }
   };
   input.click();
+}
+
+function showCSVImportDeckChooser(file, decks) {
+  const modal = document.getElementById('modal-confirm');
+  document.getElementById('confirm-title').textContent = 'CSV importieren in...';
+  document.getElementById('confirm-text').innerHTML =
+    `<select id="csv-deck-select" class="form-select mt-8">
+      ${decks.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('')}
+    </select>`;
+  document.getElementById('btn-confirm-yes').textContent = 'Importieren';
+  document.getElementById('btn-confirm-yes').className = 'btn btn-primary';
+  confirmCallback = async () => {
+    const deckId = document.getElementById('csv-deck-select').value;
+    try {
+      const count = await importCSV(file, deckId);
+      showToast(`${count} Karten importiert`);
+      refreshDashboard();
+    } catch (err) {
+      showToast('Import fehlgeschlagen: ' + err.message);
+    }
+    // Reset button
+    document.getElementById('btn-confirm-yes').textContent = 'Löschen';
+    document.getElementById('btn-confirm-yes').className = 'btn btn-danger';
+  };
+  modal.classList.add('active');
 }
 
 // === Confirm Dialog ===

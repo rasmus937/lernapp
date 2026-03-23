@@ -151,7 +151,7 @@ function renderTypeAnswer(card) {
              style="font-size:18px; text-align:center;" autocomplete="off">
     </div>
     <button class="btn btn-primary btn-full mt-8" id="btn-check-type" onclick="checkTypeAnswer('${escapeAttr(card.back)}')">
-      Pruefen
+      Prüfen
     </button>
     <div id="type-feedback" class="hidden mt-16"></div>
   `;
@@ -178,7 +178,7 @@ function renderSortSteps(card) {
         </div>
       `).join('')}
     </div>
-    <button class="btn btn-primary btn-full mt-16" onclick="checkSortOrder()">Pruefen</button>
+    <button class="btn btn-primary btn-full mt-16" onclick="checkSortOrder()">Prüfen</button>
     <div id="sort-feedback" class="hidden mt-16"></div>
   `;
 }
@@ -205,7 +205,7 @@ function renderCloze(card) {
         <input type="text" class="form-input" id="cloze-input" placeholder="Fehlenden Schritt eingeben..."
                style="font-size:16px; text-align:center;" autocomplete="off">
       </div>
-      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Pruefen</button>
+      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Prüfen</button>
       <div id="cloze-feedback" class="hidden mt-16"></div>
     `;
   }
@@ -231,7 +231,7 @@ function renderCloze(card) {
         <input type="text" class="form-input" id="cloze-input" placeholder="Fehlendes Wort eingeben..."
                style="font-size:16px; text-align:center;" autocomplete="off">
       </div>
-      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Pruefen</button>
+      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Prüfen</button>
       <div id="cloze-feedback" class="hidden mt-16"></div>
     `;
   }
