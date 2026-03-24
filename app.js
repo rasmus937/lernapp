@@ -1191,10 +1191,11 @@ async function processScannedImage(imageSource) {
   document.getElementById('scan-ocr-status').textContent = 'Lade Tesseract.js...';
 
   try {
-    const text = await runOCR(imageSource, (pct) => {
-      document.getElementById('scan-ocr-progress').style.width = pct + '%';
-      document.getElementById('scan-ocr-status').textContent = `Erkenne Text... ${pct}%`;
-    });
+    const text = await runOCR(
+      imageSource,
+      (pct) => { document.getElementById('scan-ocr-progress').style.width = pct + '%'; },
+      (status) => { document.getElementById('scan-ocr-status').textContent = status; }
+    );
 
     scanRawText = text;
     document.getElementById('scan-step-ocr').classList.add('hidden');

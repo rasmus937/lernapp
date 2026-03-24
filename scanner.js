@@ -2,17 +2,48 @@
 
 let scannerStream = null;
 
-// Load Tesseract.js from CDN
+// Load Tesseract.js from CDN with timeout and fallback
 function loadTesseract() {
   return new Promise((resolve, reject) => {
     if (window.Tesseract) { resolve(window.Tesseract); return; }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    script.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
-    script.crossOrigin = 'anonymous';
-    script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => reject(new Error('Tesseract.js konnte nicht geladen werden'));
-    document.head.appendChild(script);
+
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (!settled) { settled = true; reject(new Error('Tesseract.js Timeout – prüfe deine Internetverbindung')); }
+    }, 20000);
+
+    function tryLoad(withSRI) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      if (withSRI) {
+        script.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+      }
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          if (window.Tesseract) resolve(window.Tesseract);
+          else reject(new Error('Tesseract.js geladen aber nicht initialisiert'));
+        }
+      };
+      script.onerror = () => {
+        if (!settled) {
+          if (withSRI) {
+            // SRI can fail on some mobile browsers – retry without it
+            console.warn('Tesseract.js SRI load failed, retrying without integrity check');
+            tryLoad(false);
+          } else {
+            settled = true;
+            clearTimeout(timeout);
+            reject(new Error('Tesseract.js konnte nicht geladen werden'));
+          }
+        }
+      };
+      document.head.appendChild(script);
+    }
+
+    tryLoad(true);
   });
 }
 
@@ -55,17 +86,24 @@ function captureFrame(videoEl) {
 }
 
 // Run OCR on an image (data URL, Blob, or File)
-async function runOCR(imageSource, progressCallback) {
+async function runOCR(imageSource, progressCallback, statusCallback) {
+  if (statusCallback) statusCallback('Lade Tesseract.js...');
   const Tess = await loadTesseract();
 
+  if (statusCallback) statusCallback('Starte OCR-Engine...');
   const worker = await Tess.createWorker('deu+eng', 1, {
     logger: m => {
+      if (m.status === 'loading language traineddata') {
+        if (statusCallback) statusCallback('Lade Sprachdaten...');
+      }
       if (progressCallback && m.status === 'recognizing text') {
         progressCallback(Math.round(m.progress * 100));
+        if (statusCallback) statusCallback(`Erkenne Text... ${Math.round(m.progress * 100)}%`);
       }
     }
   });
 
+  if (statusCallback) statusCallback('Erkenne Text...');
   const { data: { text } } = await worker.recognize(imageSource);
   await worker.terminate();
   return text;
