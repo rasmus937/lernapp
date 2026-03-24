@@ -1077,7 +1077,7 @@ function showCropPreview(imageDataUrl) {
     const containerWidth = canvas.parentElement.clientWidth;
     let scale = containerWidth / img.width;
     // In landscape, also constrain by available viewport height
-    const maxH = window.innerHeight - 250; // header + nav + title + buttons + padding
+    const maxH = window.innerHeight - 280; // header(56) + nav(64) + title(42) + buttons(56) + padding(62)
     if (maxH > 100 && img.height * scale > maxH) {
       scale = maxH / img.height;
     }
