@@ -664,15 +664,19 @@ html, body {
 .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
 
-/* === Scanner Camera === */
+/* === Scanner Camera (fullscreen) === */
+#scan-step-camera {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+}
+
 .scan-camera-container {
   position: relative;
   width: 100%;
-  aspect-ratio: 3/4;
-  max-height: calc(100vh - var(--header-height) - var(--nav-height) - 100px);
-  max-height: calc(100dvh - var(--header-height) - var(--nav-height) - 100px);
+  height: 100%;
   background: #000;
-  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -683,27 +687,10 @@ html, body {
   display: block;
 }
 
-.scan-guide-frame {
-  position: absolute;
-  top: 10%;
-  left: 8%;
-  right: 8%;
-  bottom: 20%;
-  border: 2px solid rgba(76, 201, 240, 0.6);
-  border-radius: 8px;
-  pointer-events: none;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
-}
-
+/* Guide frame removed – show full camera view */
+.scan-guide-frame,
 .scan-guide-text {
-  position: absolute;
-  top: calc(10% - 28px);
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: rgba(255,255,255,0.8);
-  font-size: 13px;
-  pointer-events: none;
+  display: none;
 }
 
 .scan-camera-controls {
@@ -742,6 +729,27 @@ html, body {
   cursor: pointer;
   padding: 8px 4px;
   width: 72px;
+}
+
+/* Landscape: controls on the right side */
+@media (orientation: landscape) {
+  .scan-camera-controls {
+    bottom: auto;
+    left: auto;
+    top: 0;
+    right: 0;
+    width: 100px;
+    height: 100%;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24px 14px;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.6));
+  }
+
+  .scan-btn-cancel {
+    width: auto;
+    order: -1;
+  }
 }
 
 /* === Scanner Crop === */
