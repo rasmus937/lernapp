@@ -669,6 +669,8 @@ html, body {
   position: relative;
   width: 100%;
   aspect-ratio: 3/4;
+  max-height: calc(100vh - var(--header-height) - var(--nav-height) - 100px);
+  max-height: calc(100dvh - var(--header-height) - var(--nav-height) - 100px);
   background: #000;
   border-radius: var(--radius);
   overflow: hidden;
@@ -749,11 +751,13 @@ html, body {
   background: #000;
   border-radius: var(--radius);
   overflow: hidden;
+  max-height: calc(100vh - var(--header-height) - var(--nav-height) - 160px);
+  max-height: calc(100dvh - var(--header-height) - var(--nav-height) - 160px);
 }
 
 .scan-crop-container canvas {
-  width: 100%;
   display: block;
+  margin: 0 auto;
 }
 
 .scan-crop-overlay {

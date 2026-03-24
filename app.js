@@ -1073,12 +1073,17 @@ function showCropPreview(imageDataUrl) {
   const ctx = canvas.getContext('2d');
   const img = new Image();
   img.onload = () => {
-    // Fit canvas to container width, maintain aspect ratio
+    // Fit canvas to container, constrained by both width and height
     const containerWidth = canvas.parentElement.clientWidth;
-    const scale = containerWidth / img.width;
+    let scale = containerWidth / img.width;
+    // In landscape, also constrain by available viewport height
+    const maxH = window.innerHeight - 250; // header + nav + title + buttons + padding
+    if (maxH > 100 && img.height * scale > maxH) {
+      scale = maxH / img.height;
+    }
     canvas.width = img.width;
     canvas.height = img.height;
-    canvas.style.width = containerWidth + 'px';
+    canvas.style.width = (img.width * scale) + 'px';
     canvas.style.height = (img.height * scale) + 'px';
     ctx.drawImage(img, 0, 0);
 
