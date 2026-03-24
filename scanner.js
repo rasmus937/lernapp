@@ -74,9 +74,147 @@ async function runOCR(imageSource, progressCallback) {
 // Parse OCR text into card candidates
 function parseOCRText(rawText) {
   const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1 && l.length < 500);
+
+  // Detect if this is a numbered vocabulary list (e.g. Latin textbook format)
+  // Check if many lines start with a number followed by a space
+  const numberedLines = lines.filter(l => /^\d{1,4}\s/.test(l));
+  if (numberedLines.length >= 3 && numberedLines.length >= lines.length * 0.4) {
+    return parseNumberedVocabList(lines);
+  }
+
+  // Fallback: generic separator-based parsing
+  return parseGenericList(lines);
+}
+
+// Parse numbered vocabulary lists (e.g. "182 consistere, constitit ... stehen bleiben L 14")
+function parseNumberedVocabList(lines) {
+  // First pass: merge continuation lines into their parent numbered line
+  const merged = [];
+  for (const line of lines) {
+    if (/^\d{1,4}\s/.test(line)) {
+      merged.push(line);
+    } else if (merged.length > 0 && !/^Seite\s*\d+$/i.test(line)) {
+      // Continuation line: append to previous (skip page markers)
+      merged[merged.length - 1] += ' ' + line;
+    }
+    // Skip orphan continuation lines at the start
+  }
+
+  const cards = [];
+  for (const line of merged) {
+    const parsed = parseNumberedVocabLine(line);
+    if (parsed) cards.push(parsed);
+  }
+  return cards;
+}
+
+// Parse a single numbered vocab line
+function parseNumberedVocabLine(line) {
+  // Strip leading number: "182 consistere..." → "consistere..."
+  const stripped = line.replace(/^\d{1,4}\s+/, '');
+  if (!stripped) return null;
+
+  // Strip trailing lesson reference: "... L 14", "... L14", "... Lektion 5"
+  // Also strip embedded lesson refs from merged continuation lines (e.g. "... L 14 bestehen (aus)")
+  // Also strip page markers like "Seite 5"
+  const cleaned = stripped
+    .replace(/\s+Seite\s*\d+\s*$/i, '')
+    .replace(/\s+L\.?\s*\d{1,3}\s*$/, '')
+    .replace(/\s+L\.?\s*\d{1,3}\s+(?=[a-zäöüA-ZÄÖÜ(])/, ' ')
+    .trim();
+  if (!cleaned) return null;
+
+  // Try explicit separator first (dash, arrow, equals, colon)
+  const dashMatch = cleaned.match(/^(.+?)\s*[–—→=]\s+(.+)$/);
+  if (dashMatch && dashMatch[1].trim().length > 0 && dashMatch[2].trim().length > 0) {
+    return { front: dashMatch[1].trim(), back: dashMatch[2].trim(), type: 'vocab' };
+  }
+
+  // Try tab separator
+  const tabMatch = cleaned.match(/^(.+?)\t+(.+)$/);
+  if (tabMatch) {
+    return { front: tabMatch[1].trim(), back: tabMatch[2].trim(), type: 'vocab' };
+  }
+
+  // Try 3+ space separator
+  const spaceMatch = cleaned.match(/^(.+?)\s{3,}(.+)$/);
+  if (spaceMatch) {
+    return { front: spaceMatch[1].trim(), back: spaceMatch[2].trim(), type: 'vocab' };
+  }
+
+  // Heuristic split: find where foreign word ends and translation begins
+  // For Latin/Greek vocab: grammatical info ends, German/translation starts
+  // Common patterns: "word, word, word  translation" or "word (grammar) translation"
+  const heuristicResult = heuristicSplitVocab(cleaned);
+  if (heuristicResult) return heuristicResult;
+
+  // Last resort: if line is short enough, keep as single-sided card
+  if (cleaned.length > 2 && cleaned.length < 200) {
+    return { front: cleaned, back: '', type: 'vocab' };
+  }
+  return null;
+}
+
+// Heuristic: split a vocab line into foreign word + translation
+// Works for patterns like "longus, longa, longum lang; lang andauernd"
+function heuristicSplitVocab(text) {
+  // Common German words that signal the start of a translation
+  const DE_STARTERS = /\b(der|die|das|ein|eine|er|sie|es|sich|nicht|und|oder|vor|für|fur|aus|auf|mit|bei|nach|von|zu|jeder|ganz|mein|dein|sein|ihr|euer|unser|wahr|lang|hier|oft|genug|wissen|fühlen|fuhlen|führen|fuhren|setzen|stellen|legen|stehen|bitten|glauben|gerade|leicht|schwer|wichtig|ernst|gewaltig|hierher|wohin|ebenfalls|anreden|herantreten|hochheben|beseitigen)\b/;
+
+  // Try to find where German starts after Latin forms
+  // Strategy: scan for the first German word that isn't inside parentheses/grammar notation
+  const words = text.split(/\s+/);
+  let parenDepth = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    // Track parentheses – but ignore inline optional markers like "(be)urteilen"
+    // These have '(' and ')' within the same word with text after ')'
+    const isInlineOptional = /^\([^)]+\)\w/.test(w) || /\w\([^)]+\)$/.test(w);
+    if (!isInlineOptional) {
+      for (const ch of w) {
+        if (ch === '(') parenDepth++;
+        if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+      }
+    }
+    if (parenDepth > 0) continue;
+
+    // Skip grammatical markers commonly found in Latin entries
+    if (/^[,;.]$/.test(w)) continue;
+    if (/^(m|f|n|Pl|Gen|Dat|Abl|Akk|Nom|Sg|Imp|Abl\.)$/i.test(w)) continue;
+
+    // Check if this word looks like the start of a German translation
+    // Also detect German words with optional prefixes like "(be)urteilen", "(er)bitten"
+    const isDeWord = DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
+    if (i > 0 && isDeWord) {
+      const front = words.slice(0, i).join(' ').replace(/[\s,;]+$/, '').trim();
+      const back = words.slice(i).join(' ').trim();
+      if (front.length > 0 && back.length > 0) {
+        return { front, back, type: 'vocab' };
+      }
+    }
+  }
+
+  // Fallback: if no German starter found, look for a pattern break
+  // Latin words tend to have commas between forms, then a clear word follows
+  // Try splitting after the last comma-group that looks like Latin declension
+  const commaGroups = text.match(/^([^,]+(?:,\s*[^,]+)*?)\s+([A-Za-zÄÖÜäöüß].{2,})$/);
+  if (commaGroups) {
+    const potentialFront = commaGroups[1].trim();
+    const potentialBack = commaGroups[2].trim();
+    // Verify: back should contain at least one common German character pattern
+    if (/[äöüßÄÖÜ]|^(der|die|das|ein|nicht)\b/.test(potentialBack)) {
+      return { front: potentialFront, back: potentialBack, type: 'vocab' };
+    }
+  }
+
+  return null;
+}
+
+// Generic separator-based parsing for non-numbered lists
+function parseGenericList(lines) {
   const cards = [];
 
-  // Common separator patterns for vocabulary lists
   const separators = [
     /^(.+?)\s*[-–—=:→]\s*(.+)$/,       // "word - translation", "word = translation"
     /^(.+?)\s{3,}(.+)$/,                 // "word      translation" (3+ spaces)
@@ -105,7 +243,7 @@ function parseOCRText(rawText) {
         cards.push({
           front: numMatch[2].trim(),
           back: '',
-          type: '_step', // marked as step, will be grouped later
+          type: '_step',
           stepNum: parseInt(numMatch[1])
         });
         matched = true;
@@ -144,7 +282,6 @@ function parseOCRText(rawText) {
       }
     }
   }
-  // Flush remaining steps
   if (stepBuffer.length > 0) {
     result.push({
       front: 'Prozess',
