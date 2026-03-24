@@ -1209,7 +1209,7 @@ async function processScannedImage(imageSource) {
 
     showScanPreview();
   } catch (err) {
-    showToast('OCR fehlgeschlagen: ' + err.message);
+    showToast('OCR fehlgeschlagen: ' + (err?.message || String(err) || 'Unbekannter Fehler'));
     resetScanner();
   }
 }
