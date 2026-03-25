@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' blob: data:; media-src 'self' blob:; worker-src blob: 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' blob: data:; media-src 'self' blob:; worker-src blob: 'self'">
   <meta name="theme-color" content="#16213e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,9 +13,9 @@
   <link rel="apple-touch-icon" href="icons/icon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="locked">
-  <!-- Lock Screen -->
-  <div id="lock-screen">
+<body>
+  <!-- Lock Screen (deaktiviert – Verschlüsselung kommt später) -->
+  <div id="lock-screen" style="display:none">
     <div class="lock-container">
       <div class="lock-icon">🔒</div>
       <h1 class="lock-title">LernApp</h1>

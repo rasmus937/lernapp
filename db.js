@@ -312,17 +312,12 @@ const DEFAULT_SETTINGS = {
   streakFreezes: 2
 };
 
-// Session API key – decrypted at unlock, never stored in plaintext
+// Session API key cache (loaded from DB on startup)
 let _sessionApiKey = '';
 
 async function getSettings() {
   const settings = await dbGet('settings', 'settings');
-  const result = settings || { ...DEFAULT_SETTINGS };
-  // Inject session API key so consumers (ollama.js etc.) get it transparently
-  if (_sessionApiKey) {
-    result.ollamaApiKey = _sessionApiKey;
-  }
-  return result;
+  return settings || { ...DEFAULT_SETTINGS };
 }
 
 async function saveSettings(updates) {

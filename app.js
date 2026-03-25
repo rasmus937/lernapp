@@ -273,16 +273,21 @@ async function initApp() {
   await refreshDashboard();
 }
 
-// === DOMContentLoaded – starts lock screen ===
+// === DOMContentLoaded ===
 
 document.addEventListener('DOMContentLoaded', async () => {
   await openDB();
 
-  // Apply theme before unlock so lock screen matches
+  // Apply theme early
   const rawSettings = await dbGet('settings', 'settings');
   if (rawSettings && rawSettings.theme) applyTheme(rawSettings.theme);
 
-  initLockScreen();
+  // Load plaintext API key into session
+  if (rawSettings && rawSettings.ollamaApiKey) {
+    _sessionApiKey = rawSettings.ollamaApiKey;
+  }
+
+  initApp();
 });
 
 // === Navigation ===
@@ -1591,16 +1596,31 @@ async function loadSettings() {
   document.getElementById('set-ai-model').value = settings.aiModel || '';
   updateAiProviderUI();
 
-  // Reset connection status
-  document.getElementById('ai-status-text').textContent = 'Nicht getestet';
-  document.getElementById('ai-status-text').style.color = '';
+  // Auto-test connection if provider is configured
+  const statusText = document.getElementById('ai-status-text');
+  if (settings.aiProvider && settings.aiProvider !== 'none') {
+    statusText.textContent = 'Teste Verbindung...';
+    statusText.style.color = '';
+    testAiConnection().then(result => {
+      if (result.ok) {
+        statusText.textContent = 'Verbunden – Modell: ' + result.model;
+        statusText.style.color = 'var(--success)';
+      } else {
+        statusText.textContent = 'Nicht verbunden: ' + result.error;
+        statusText.style.color = 'var(--danger)';
+      }
+    });
+  } else {
+    statusText.textContent = 'Kein Anbieter gewählt';
+    statusText.style.color = '';
+  }
 
   // Learning & theme
   document.getElementById('set-daily-goal').value = settings.dailyGoal || 20;
   document.getElementById('set-theme').value = settings.theme || 'dark';
 
   // API Key status display
-  const hasKey = !!_sessionApiKey;
+  const hasKey = !!settings.ollamaApiKey;
   document.getElementById('api-key-text').textContent = hasKey ? '●●●●●●●● gespeichert' : 'Nicht gespeichert';
   document.getElementById('api-key-text').style.color = hasKey ? 'var(--success)' : '';
   document.getElementById('btn-api-key-remove').classList.toggle('hidden', !hasKey);
@@ -1651,7 +1671,6 @@ async function saveAppSettings() {
   const theme = document.getElementById('set-theme').value;
   if (!['dark', 'light'].includes(theme)) return;
 
-  // Build ollamaUrl for backward compatibility (used by getAiConfig via aiUrl)
   await saveSettings({
     aiProvider,
     aiUrl,
@@ -1660,28 +1679,41 @@ async function saveAppSettings() {
     theme
   });
   showToast('Einstellungen gespeichert');
+
+  // Auto-test connection after save
+  if (aiProvider !== 'none') {
+    const statusText = document.getElementById('ai-status-text');
+    statusText.textContent = 'Teste Verbindung...';
+    statusText.style.color = '';
+    const result = await testAiConnection();
+    if (result.ok) {
+      statusText.textContent = 'Verbunden – Modell: ' + result.model;
+      statusText.style.color = 'var(--success)';
+    } else {
+      statusText.textContent = 'Nicht verbunden: ' + result.error;
+      statusText.style.color = 'var(--danger)';
+    }
+  }
 }
 
 // === API Key Management ===
 
 async function saveApiKey(newKey) {
-  if (!_appPin) { showToast('PIN nicht verfügbar – bitte App neu starten'); return; }
   try {
-    const encrypted = await encryptWithPin(newKey, _appPin);
     _sessionApiKey = newKey;
-    await saveSettings({ encryptedOllamaApiKey: encrypted, ollamaApiKey: '' });
+    await saveSettings({ ollamaApiKey: newKey });
     showToast('API Key gespeichert');
     loadSettings();
     autoBackup();
   } catch (e) {
-    console.error('API key encryption failed:', e);
-    showToast('Verschlüsselung fehlgeschlagen: ' + (e.message || 'Unbekannter Fehler'));
+    console.error('API key save failed:', e);
+    showToast('Fehler beim Speichern: ' + (e.message || 'Unbekannter Fehler'));
   }
 }
 
 async function removeApiKey() {
   _sessionApiKey = '';
-  await saveSettings({ encryptedOllamaApiKey: '', ollamaApiKey: '' });
+  await saveSettings({ ollamaApiKey: '', encryptedOllamaApiKey: '' });
   showToast('API Key entfernt');
   loadSettings();
   autoBackup();

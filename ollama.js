@@ -26,9 +26,10 @@ async function getAiConfig() {
     if (!url) return null;
   }
 
-  // API key (from encrypted session)
-  if (settings.ollamaApiKey) {
-    headers['Authorization'] = 'Bearer ' + settings.ollamaApiKey;
+  // API key from settings
+  const apiKey = settings.ollamaApiKey || '';
+  if (apiKey) {
+    headers['Authorization'] = 'Bearer ' + apiKey;
   }
 
   // Model: manual override or auto-select
