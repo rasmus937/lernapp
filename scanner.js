@@ -230,6 +230,18 @@ function cleanOCRText(rawText) {
     // Stray I inside lowercase word
     l = l.replace(/(?<=[a-zäöü])I(?=[a-zäöü])/g, 'l');
 
+    // Capital T misread at end of lowercase word → likely i (e.g. accessT → accessi)
+    l = l.replace(/(?<=[a-z])T(?=\s|,|;|$)/g, 'i');
+
+    // Normalize non-German accented characters (é, è, ê, ó, ò, etc.)
+    // These are NOT valid in German or Latin – they're OCR artifacts from macrons
+    // German umlauts (ä, ö, ü, ß) are kept intact
+    l = l.replace(/[éèêë]/g, 'e').replace(/[ÉÈÊË]/g, 'E');
+    l = l.replace(/[óòô]/g, 'o').replace(/[ÓÒÔ]/g, 'O');
+    l = l.replace(/[íìîï]/g, 'i').replace(/[ÍÌÎÏ]/g, 'I');
+    l = l.replace(/[úùû]/g, 'u').replace(/[ÚÙÛ]/g, 'U');
+    l = l.replace(/[áàâ]/g, 'a').replace(/[ÁÀÂ]/g, 'A');
+
     // Remove isolated special characters (noise artifacts between words)
     l = l.replace(/(?<=\s|^)[|\\\/^~`#@&*<>{}[\]_]+(?=\s|$)/g, '');
 
@@ -514,12 +526,27 @@ function parseGenericList(lines) {
 // === Post-Parse Cleanup ===
 
 function cleanParsedCards(cards) {
+  // Detect if this is a Latin vocab list (front sides have Latin-looking words)
+  const isLatin = cards.length >= 3 && cards.filter(c =>
+    /^[a-z]/.test(c.front) && /[,;]/.test(c.front)
+  ).length >= cards.length * 0.3;
+
   return cards.map(card => ({
     ...card,
-    front: cleanCardText(card.front),
+    front: isLatin ? cleanLatinText(cleanCardText(card.front)) : cleanCardText(card.front),
     back: cleanCardText(card.back || ''),
     steps: card.steps ? card.steps.map(cleanCardText) : card.steps
   })).filter(c => c.front.length > 1);
+}
+
+// Clean Latin text: strip umlauts/accents that are OCR artifacts
+// Latin uses only ASCII letters + macrons (which we strip)
+function cleanLatinText(text) {
+  return text
+    .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+    .replace(/ä/g, 'a').replace(/Ä/g, 'A')
+    .replace(/ß/g, 'ss');
 }
 
 function cleanCardText(text) {
