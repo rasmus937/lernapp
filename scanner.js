@@ -47,8 +47,10 @@ function loadTesseract() {
 }
 
 // === Image Preprocessing Pipeline ===
+// LSTM-optimized: grayscale + noise reduction + contrast (NO binarization)
+// Binarization destroys thin strokes (d→o confusion) and creates noise artifacts.
+// Tesseract's LSTM engine works better with clean grayscale images.
 
-// Preprocess image for better OCR: upscale, grayscale, contrast, binarize
 function preprocessImageForOCR(imageDataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -59,24 +61,46 @@ function preprocessImageForOCR(imageDataUrl) {
         if (img.width < 1500 && img.height < 1500) scale = 2;
 
         const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        const w = img.width * scale;
+        const h = img.height * scale;
+        canvas.width = w;
+        canvas.height = h;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, w, h);
 
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
 
         // Step 2: Grayscale using min-channel (captures colored text like red/blue on white)
-        const gray = new Uint8Array(data.length / 4);
+        // red(255,0,0) → min=0 (black), white(255,255,255) → min=255 (white)
+        const gray = new Uint8Array(w * h);
         for (let i = 0; i < data.length; i += 4) {
           gray[i / 4] = Math.min(data[i], data[i + 1], data[i + 2]);
         }
 
-        // Step 3: Contrast stretch (1st/99th percentile)
+        // Step 3: Gentle noise reduction (3x3 Gaussian-like weighted average)
+        // Removes camera sensor noise without destroying letter features
+        const smoothed = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (y === 0 || y === h - 1 || x === 0 || x === w - 1) {
+              smoothed[idx] = gray[idx];
+              continue;
+            }
+            // Kernel: [1,2,1; 2,4,2; 1,2,1] / 16
+            smoothed[idx] = (
+              gray[(y-1)*w+(x-1)] + 2*gray[(y-1)*w+x] + gray[(y-1)*w+(x+1)] +
+              2*gray[y*w+(x-1)]   + 4*gray[idx]        + 2*gray[y*w+(x+1)] +
+              gray[(y+1)*w+(x-1)] + 2*gray[(y+1)*w+x] + gray[(y+1)*w+(x+1)]
+            ) >> 4;
+          }
+        }
+
+        // Step 4: Contrast stretch (1st/99th percentile)
         const hist = new Uint32Array(256);
-        for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
-        const totalPixels = gray.length;
+        for (let i = 0; i < smoothed.length; i++) hist[smoothed[i]]++;
+        const totalPixels = smoothed.length;
         const pLow = totalPixels * 0.01;
         const pHigh = totalPixels * 0.99;
         let cumSum = 0, minVal = 0, maxVal = 255;
@@ -86,29 +110,16 @@ function preprocessImageForOCR(imageDataUrl) {
           if (cumSum >= pHigh) { maxVal = i; break; }
         }
         const range = maxVal - minVal || 1;
-        for (let i = 0; i < gray.length; i++) {
-          gray[i] = Math.max(0, Math.min(255, Math.round((gray[i] - minVal) * 255 / range)));
-        }
 
-        // Step 4: Otsu binarization
-        const threshold = otsuThreshold(gray);
-        for (let i = 0; i < gray.length; i++) {
-          const val = gray[i] < threshold ? 0 : 255;
+        // Write back as grayscale – NO binarization, preserves all letter detail
+        for (let i = 0; i < smoothed.length; i++) {
+          const val = Math.max(0, Math.min(255, Math.round((smoothed[i] - minVal) * 255 / range)));
           data[i * 4] = val;
           data[i * 4 + 1] = val;
           data[i * 4 + 2] = val;
-          // alpha stays 255
         }
 
         ctx.putImageData(imageData, 0, 0);
-
-        // Step 5: Sharpen if upscaled (unsharp mask 3x3)
-        if (scale > 1) {
-          const sharpened = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          sharpen3x3(sharpened);
-          ctx.putImageData(sharpened, 0, 0);
-        }
-
         resolve(canvas.toDataURL('image/png'));
       } catch (err) {
         reject(err);
@@ -117,54 +128,6 @@ function preprocessImageForOCR(imageDataUrl) {
     img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
     img.src = imageDataUrl;
   });
-}
-
-// Otsu's method: find optimal binarization threshold
-function otsuThreshold(gray) {
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
-  const total = gray.length;
-
-  let sumAll = 0;
-  for (let i = 0; i < 256; i++) sumAll += i * hist[i];
-
-  let sumBg = 0, wBg = 0, bestThresh = 0, bestVar = 0;
-  for (let t = 0; t < 256; t++) {
-    wBg += hist[t];
-    if (wBg === 0) continue;
-    const wFg = total - wBg;
-    if (wFg === 0) break;
-    sumBg += t * hist[t];
-    const meanBg = sumBg / wBg;
-    const meanFg = (sumAll - sumBg) / wFg;
-    const variance = wBg * wFg * (meanBg - meanFg) * (meanBg - meanFg);
-    if (variance > bestVar) {
-      bestVar = variance;
-      bestThresh = t;
-    }
-  }
-  return bestThresh;
-}
-
-// Simple 3x3 sharpening kernel
-function sharpen3x3(imageData) {
-  const { data, width, height } = imageData;
-  const copy = new Uint8ClampedArray(data);
-  // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const idx = (y * width + x) * 4;
-      for (let c = 0; c < 3; c++) {
-        const val =
-          -copy[((y - 1) * width + x) * 4 + c]
-          - copy[(y * width + x - 1) * 4 + c]
-          + 5 * copy[idx + c]
-          - copy[(y * width + x + 1) * 4 + c]
-          - copy[((y + 1) * width + x) * 4 + c];
-        data[idx + c] = Math.max(0, Math.min(255, val));
-      }
-    }
-  }
 }
 
 // === Camera Functions ===
@@ -267,22 +230,35 @@ function cleanOCRText(rawText) {
     // Stray I inside lowercase word
     l = l.replace(/(?<=[a-zäöü])I(?=[a-zäöü])/g, 'l');
 
+    // Remove isolated special characters (noise artifacts between words)
+    l = l.replace(/(?<=\s|^)[|\\\/^~`#@&*<>{}[\]_]+(?=\s|$)/g, '');
+
+    // Remove isolated single non-alphanumeric chars that are likely noise
+    l = l.replace(/(?<=\s)[^a-zA-Z0-9äöüÄÖÜß.,;:!?()\-–—'"]+(?=\s)/g, ' ');
+
     // Double commas/periods
     l = l.replace(/,\s*,/g, ',');
     l = l.replace(/\.\s*\./g, '.');
 
-    // Normalize various dash types to standard dash
+    // Normalize various dash types
     l = l.replace(/[‐‑‒―]/g, '-');
 
-    return l;
+    // Collapse multiple spaces to single
+    l = l.replace(/\s{2,}/g, ' ');
+
+    return l.trim();
   });
 
-  // Remove page artifacts (standalone page numbers, headers)
+  // Remove page artifacts, empty lines, and garbage lines
   lines = lines.filter(l => {
-    const trimmed = l.trim();
-    if (!trimmed) return false;
-    if (/^\s*Seite\s*\d+\s*$/i.test(trimmed)) return false;
-    if (/^\s*\d{1,2}\s*$/.test(trimmed)) return false; // Standalone small numbers (page nums)
+    if (!l) return false;
+    if (/^\s*Seite\s*\d+\s*$/i.test(l)) return false;
+    if (/^\s*\d{1,2}\s*$/.test(l)) return false;
+    // Lines with only 1-2 chars that aren't real words
+    if (l.length <= 2 && !/^[a-zA-ZäöüÄÖÜß]{2}$/.test(l)) return false;
+    // Lines that are mostly special characters (>50% non-alphanumeric)
+    const alphaCount = (l.match(/[a-zA-ZäöüÄÖÜß0-9]/g) || []).length;
+    if (l.length > 3 && alphaCount < l.length * 0.4) return false;
     return true;
   });
 
