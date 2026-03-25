@@ -30,7 +30,6 @@ function loadTesseract() {
       script.onerror = () => {
         if (!settled) {
           if (withSRI) {
-            // SRI can fail on some mobile browsers – retry without it
             console.warn('Tesseract.js SRI load failed, retrying without integrity check');
             tryLoad(false);
           } else {
@@ -47,7 +46,129 @@ function loadTesseract() {
   });
 }
 
-// Start camera preview
+// === Image Preprocessing Pipeline ===
+
+// Preprocess image for better OCR: upscale, grayscale, contrast, binarize
+function preprocessImageForOCR(imageDataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        // Step 1: Upscale if too small (Tesseract needs ~300 DPI)
+        let scale = 1;
+        if (img.width < 1500 && img.height < 1500) scale = 2;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // Step 2: Grayscale using min-channel (captures colored text like red/blue on white)
+        const gray = new Uint8Array(data.length / 4);
+        for (let i = 0; i < data.length; i += 4) {
+          gray[i / 4] = Math.min(data[i], data[i + 1], data[i + 2]);
+        }
+
+        // Step 3: Contrast stretch (1st/99th percentile)
+        const hist = new Uint32Array(256);
+        for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+        const totalPixels = gray.length;
+        const pLow = totalPixels * 0.01;
+        const pHigh = totalPixels * 0.99;
+        let cumSum = 0, minVal = 0, maxVal = 255;
+        for (let i = 0; i < 256; i++) {
+          cumSum += hist[i];
+          if (cumSum >= pLow && minVal === 0 && i > 0) minVal = i;
+          if (cumSum >= pHigh) { maxVal = i; break; }
+        }
+        const range = maxVal - minVal || 1;
+        for (let i = 0; i < gray.length; i++) {
+          gray[i] = Math.max(0, Math.min(255, Math.round((gray[i] - minVal) * 255 / range)));
+        }
+
+        // Step 4: Otsu binarization
+        const threshold = otsuThreshold(gray);
+        for (let i = 0; i < gray.length; i++) {
+          const val = gray[i] < threshold ? 0 : 255;
+          data[i * 4] = val;
+          data[i * 4 + 1] = val;
+          data[i * 4 + 2] = val;
+          // alpha stays 255
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        // Step 5: Sharpen if upscaled (unsharp mask 3x3)
+        if (scale > 1) {
+          const sharpened = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          sharpen3x3(sharpened);
+          ctx.putImageData(sharpened, 0, 0);
+        }
+
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
+    img.src = imageDataUrl;
+  });
+}
+
+// Otsu's method: find optimal binarization threshold
+function otsuThreshold(gray) {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+  const total = gray.length;
+
+  let sumAll = 0;
+  for (let i = 0; i < 256; i++) sumAll += i * hist[i];
+
+  let sumBg = 0, wBg = 0, bestThresh = 0, bestVar = 0;
+  for (let t = 0; t < 256; t++) {
+    wBg += hist[t];
+    if (wBg === 0) continue;
+    const wFg = total - wBg;
+    if (wFg === 0) break;
+    sumBg += t * hist[t];
+    const meanBg = sumBg / wBg;
+    const meanFg = (sumAll - sumBg) / wFg;
+    const variance = wBg * wFg * (meanBg - meanFg) * (meanBg - meanFg);
+    if (variance > bestVar) {
+      bestVar = variance;
+      bestThresh = t;
+    }
+  }
+  return bestThresh;
+}
+
+// Simple 3x3 sharpening kernel
+function sharpen3x3(imageData) {
+  const { data, width, height } = imageData;
+  const copy = new Uint8ClampedArray(data);
+  // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const val =
+          -copy[((y - 1) * width + x) * 4 + c]
+          - copy[(y * width + x - 1) * 4 + c]
+          + 5 * copy[idx + c]
+          - copy[(y * width + x + 1) * 4 + c]
+          - copy[((y + 1) * width + x) * 4 + c];
+        data[idx + c] = Math.max(0, Math.min(255, val));
+      }
+    }
+  }
+}
+
+// === Camera Functions ===
+
 async function startCamera(videoEl) {
   try {
     scannerStream = await navigator.mediaDevices.getUserMedia({
@@ -58,7 +179,6 @@ async function startCamera(videoEl) {
     return true;
   } catch (err) {
     console.error('Camera error:', err);
-    // Clean up stream if play() failed after getUserMedia() succeeded
     if (scannerStream) {
       scannerStream.getTracks().forEach(t => t.stop());
       scannerStream = null;
@@ -67,7 +187,6 @@ async function startCamera(videoEl) {
   }
 }
 
-// Stop camera
 function stopCamera() {
   if (scannerStream) {
     scannerStream.getTracks().forEach(t => t.stop());
@@ -75,7 +194,6 @@ function stopCamera() {
   }
 }
 
-// Capture frame from video to canvas and return image data
 function captureFrame(videoEl) {
   const canvas = document.createElement('canvas');
   canvas.width = videoEl.videoWidth;
@@ -85,11 +203,24 @@ function captureFrame(videoEl) {
   return canvas.toDataURL('image/png');
 }
 
-// Run OCR on an image (data URL, Blob, or File)
+// === OCR ===
+
 async function runOCR(imageSource, progressCallback, statusCallback) {
+  // Step 1: Preprocess image
+  if (statusCallback) statusCallback('Bild wird optimiert...');
+  let preprocessed;
+  try {
+    preprocessed = await preprocessImageForOCR(imageSource);
+  } catch (err) {
+    console.warn('Image preprocessing failed, using original:', err);
+    preprocessed = imageSource;
+  }
+
+  // Step 2: Load Tesseract
   if (statusCallback) statusCallback('Lade Tesseract.js...');
   const Tess = await loadTesseract();
 
+  // Step 3: Create worker with optimized parameters
   if (statusCallback) statusCallback('Starte OCR-Engine...');
   const worker = await Tess.createWorker('deu+eng', 1, {
     logger: m => {
@@ -103,39 +234,129 @@ async function runOCR(imageSource, progressCallback, statusCallback) {
     }
   });
 
+  // PSM 6 = uniform block of text (ideal for vocab lists)
+  // preserve_interword_spaces keeps column spacing intact
+  await worker.setParameters({
+    tessedit_pageseg_mode: '6',
+    preserve_interword_spaces: '1',
+  });
+
+  // Step 4: Recognize
   if (statusCallback) statusCallback('Erkenne Text...');
-  const { data: { text } } = await worker.recognize(imageSource);
+  const { data: { text } } = await worker.recognize(preprocessed);
   await worker.terminate();
-  return text;
+
+  // Step 5: Clean OCR artifacts
+  return cleanOCRText(text);
 }
 
-// Parse OCR text into card candidates
+// === OCR Text Cleaning ===
+
+function cleanOCRText(rawText) {
+  let lines = rawText.split('\n');
+
+  lines = lines.map(line => {
+    let l = line;
+
+    // Fix digit/letter confusion inside words
+    l = l.replace(/(?<=[a-zA-ZäöüÄÖÜ])1(?=[a-zA-ZäöüÄÖÜ])/g, 'l');
+    l = l.replace(/(?<=[a-zA-ZäöüÄÖÜ])0(?=[a-zA-ZäöüÄÖÜ])/g, 'o');
+    l = l.replace(/(?<=[a-zA-ZäöüÄÖÜ])5(?=[a-zA-ZäöüÄÖÜ])/g, 's');
+    // Capital I misread as lowercase l at word start before lowercase letters
+    l = l.replace(/(?<=\s|^)I(?=[a-zäöü]{2})/g, 'l');
+    // Stray I inside lowercase word
+    l = l.replace(/(?<=[a-zäöü])I(?=[a-zäöü])/g, 'l');
+
+    // Double commas/periods
+    l = l.replace(/,\s*,/g, ',');
+    l = l.replace(/\.\s*\./g, '.');
+
+    // Normalize various dash types to standard dash
+    l = l.replace(/[‐‑‒―]/g, '-');
+
+    return l;
+  });
+
+  // Remove page artifacts (standalone page numbers, headers)
+  lines = lines.filter(l => {
+    const trimmed = l.trim();
+    if (!trimmed) return false;
+    if (/^\s*Seite\s*\d+\s*$/i.test(trimmed)) return false;
+    if (/^\s*\d{1,2}\s*$/.test(trimmed)) return false; // Standalone small numbers (page nums)
+    return true;
+  });
+
+  return lines.join('\n');
+}
+
+// === Card Parsing ===
+
+// Expanded German word list for detecting translation boundaries
+const DE_STARTER_WORDS = [
+  // Articles & pronouns
+  'der','die','das','ein','eine','einer','einem','einen',
+  'er','sie','es','sich','jeder','jede','jedes','ganz',
+  'mein','dein','sein','ihr','euer','unser','wir','man','wer','was',
+  // Prepositions
+  'vor','für','fur','aus','auf','mit','bei','nach','von','zu',
+  'gegen','ohne','über','unter','zwischen','neben','hinter',
+  'wegen','während','trotz','statt','außer','seit','bis','durch','an','in','um',
+  // Conjunctions & particles
+  'und','oder','nicht','ob','wenn','weil','damit','obwohl',
+  'also','denn','doch','sondern','jedoch','außerdem','bereits',
+  'dennoch','ebenfalls','sogar','zwar','aber','dass','daß',
+  // Adverbs
+  'hier','dort','oft','genug','sehr','schon','noch','immer','nie','niemals',
+  'gerade','etwa','ungefähr','fast','kaum','sofort','plötzlich',
+  'endlich','zuletzt','zuerst','damals','bisher','jetzt','dann',
+  'deshalb','daher','darum','trotzdem','neulich',
+  // Common adjectives that start translations
+  'lang','wahr','kurz','groß','klein','gut','schlecht','neu','alt',
+  'hoch','tief','breit','eng','stark','schnell','langsam',
+  'richtig','falsch','möglich','nötig','eigen','fremd','heilig',
+  'mächtig','tapfer','günstig','ungünstig','leicht','schwer',
+  'wichtig','ernst','gewaltig','treu','grausam',
+  // Common verbs that start translations
+  'wissen','fühlen','fuhlen','führen','fuhren','setzen','stellen',
+  'legen','stehen','bitten','glauben','gehen','kommen','nehmen',
+  'geben','machen','sagen','halten','lassen','bringen','tragen',
+  'ziehen','schlagen','rufen','fallen','treiben','brechen',
+  'sprechen','werfen','greifen','heißen','bleiben','scheinen',
+  'treten','reden','meinen','kennen','nennen','erkennen',
+  'versuchen','bestehen','beurteilen','bezeichnen','vernichten',
+  'beseitigen','hochheben','angreifen','verteidigen','errichten',
+  'zerstören','herrschen','gehorchen','kämpfen','siegen',
+  'besiegen','erobern','fliehen','verfolgen','zurückkehren',
+  'anreden','herantreten','hierher','wohin',
+  // Additional starters
+  'alle','alles','kein','keine','viel','viele','wenig','wenige',
+  'mehr','selbst','nur','so','wie','wo','weg','teil',
+];
+const DE_STARTERS = new RegExp('\\b(' + DE_STARTER_WORDS.join('|') + ')\\b', 'i');
+
 function parseOCRText(rawText) {
   const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1 && l.length < 500);
 
-  // Detect if this is a numbered vocabulary list (e.g. Latin textbook format)
-  // Check if many lines start with a number followed by a space
+  // Detect if this is a numbered vocabulary list
   const numberedLines = lines.filter(l => /^\d{1,4}\s/.test(l));
+  let cards;
   if (numberedLines.length >= 3 && numberedLines.length >= lines.length * 0.4) {
-    return parseNumberedVocabList(lines);
+    cards = parseNumberedVocabList(lines);
+  } else {
+    cards = parseGenericList(lines);
   }
 
-  // Fallback: generic separator-based parsing
-  return parseGenericList(lines);
+  return cleanParsedCards(cards);
 }
 
-// Parse numbered vocabulary lists (e.g. "182 consistere, constitit ... stehen bleiben L 14")
 function parseNumberedVocabList(lines) {
-  // First pass: merge continuation lines into their parent numbered line
   const merged = [];
   for (const line of lines) {
     if (/^\d{1,4}\s/.test(line)) {
       merged.push(line);
     } else if (merged.length > 0 && !/^Seite\s*\d+$/i.test(line)) {
-      // Continuation line: append to previous (skip page markers)
       merged[merged.length - 1] += ' ' + line;
     }
-    // Skip orphan continuation lines at the start
   }
 
   const cards = [];
@@ -146,23 +367,21 @@ function parseNumberedVocabList(lines) {
   return cards;
 }
 
-// Parse a single numbered vocab line
 function parseNumberedVocabLine(line) {
-  // Strip leading number: "182 consistere..." → "consistere..."
   const stripped = line.replace(/^\d{1,4}\s+/, '');
   if (!stripped) return null;
 
-  // Strip trailing lesson reference: "... L 14", "... L14", "... Lektion 5"
-  // Also strip embedded lesson refs from merged continuation lines (e.g. "... L 14 bestehen (aus)")
-  // Also strip page markers like "Seite 5"
+  // Strip trailing lesson/page references
   const cleaned = stripped
     .replace(/\s+Seite\s*\d+\s*$/i, '')
+    .replace(/\s+Lektion\s*\d{1,3}\s*$/i, '')
+    .replace(/\s+Kap\.?\s*\d{1,3}\s*$/i, '')
     .replace(/\s+L\.?\s*\d{1,3}\s*$/, '')
     .replace(/\s+L\.?\s*\d{1,3}\s+(?=[a-zäöüA-ZÄÖÜ(])/, ' ')
     .trim();
   if (!cleaned) return null;
 
-  // Try explicit separator first (dash, arrow, equals, colon)
+  // Try explicit separator (dash, arrow, equals)
   const dashMatch = cleaned.match(/^(.+?)\s*[–—→=]\s+(.+)$/);
   if (dashMatch && dashMatch[1].trim().length > 0 && dashMatch[2].trim().length > 0) {
     return { front: dashMatch[1].trim(), back: dashMatch[2].trim(), type: 'vocab' };
@@ -180,34 +399,31 @@ function parseNumberedVocabLine(line) {
     return { front: spaceMatch[1].trim(), back: spaceMatch[2].trim(), type: 'vocab' };
   }
 
-  // Heuristic split: find where foreign word ends and translation begins
-  // For Latin/Greek vocab: grammatical info ends, German/translation starts
-  // Common patterns: "word, word, word  translation" or "word (grammar) translation"
+  // Try 2-space separator if right side looks German
+  const twoSpaceMatch = cleaned.match(/^(.{8,}?)\s{2}([A-ZÄÖÜa-zäöüß].{2,})$/);
+  if (twoSpaceMatch && /[äöüßÄÖÜ]/.test(twoSpaceMatch[2])) {
+    return { front: twoSpaceMatch[1].trim(), back: twoSpaceMatch[2].trim(), type: 'vocab' };
+  }
+
+  // Heuristic split
   const heuristicResult = heuristicSplitVocab(cleaned);
   if (heuristicResult) return heuristicResult;
 
-  // Last resort: if line is short enough, keep as single-sided card
+  // Last resort: single-sided card
   if (cleaned.length > 2 && cleaned.length < 200) {
     return { front: cleaned, back: '', type: 'vocab' };
   }
   return null;
 }
 
-// Heuristic: split a vocab line into foreign word + translation
-// Works for patterns like "longus, longa, longum lang; lang andauernd"
+// Heuristic: split vocab line into foreign word + translation
 function heuristicSplitVocab(text) {
-  // Common German words that signal the start of a translation
-  const DE_STARTERS = /\b(der|die|das|ein|eine|er|sie|es|sich|nicht|und|oder|vor|für|fur|aus|auf|mit|bei|nach|von|zu|jeder|ganz|mein|dein|sein|ihr|euer|unser|wahr|lang|hier|oft|genug|wissen|fühlen|fuhlen|führen|fuhren|setzen|stellen|legen|stehen|bitten|glauben|gerade|leicht|schwer|wichtig|ernst|gewaltig|hierher|wohin|ebenfalls|anreden|herantreten|hochheben|beseitigen)\b/;
-
-  // Try to find where German starts after Latin forms
-  // Strategy: scan for the first German word that isn't inside parentheses/grammar notation
   const words = text.split(/\s+/);
   let parenDepth = 0;
 
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     // Track parentheses – but ignore inline optional markers like "(be)urteilen"
-    // These have '(' and ')' within the same word with text after ')'
     const isInlineOptional = /^\([^)]+\)\w/.test(w) || /\w\([^)]+\)$/.test(w);
     if (!isInlineOptional) {
       for (const ch of w) {
@@ -217,14 +433,19 @@ function heuristicSplitVocab(text) {
     }
     if (parenDepth > 0) continue;
 
-    // Skip grammatical markers commonly found in Latin entries
+    // Skip grammatical markers
     if (/^[,;.]$/.test(w)) continue;
     if (/^(m|f|n|Pl|Gen|Dat|Abl|Akk|Nom|Sg|Imp|Abl\.)$/i.test(w)) continue;
 
-    // Check if this word looks like the start of a German translation
-    // Also detect German words with optional prefixes like "(be)urteilen", "(er)bitten"
-    const isDeWord = DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
-    if (i > 0 && isDeWord) {
+    if (i === 0) continue;
+
+    // Priority 1: Word contains umlaut/ß → definitely German
+    const hasGermanChar = /[äöüßÄÖÜ]/.test(w);
+
+    // Priority 2: Word matches DE_STARTERS list
+    const isDeWord = hasGermanChar || DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
+
+    if (isDeWord) {
       const front = words.slice(0, i).join(' ').replace(/[\s,;]+$/, '').trim();
       const back = words.slice(i).join(' ').trim();
       if (front.length > 0 && back.length > 0) {
@@ -233,14 +454,11 @@ function heuristicSplitVocab(text) {
     }
   }
 
-  // Fallback: if no German starter found, look for a pattern break
-  // Latin words tend to have commas between forms, then a clear word follows
-  // Try splitting after the last comma-group that looks like Latin declension
+  // Fallback: pattern break after comma-groups (Latin declension pattern)
   const commaGroups = text.match(/^([^,]+(?:,\s*[^,]+)*?)\s+([A-Za-zÄÖÜäöüß].{2,})$/);
   if (commaGroups) {
     const potentialFront = commaGroups[1].trim();
     const potentialBack = commaGroups[2].trim();
-    // Verify: back should contain at least one common German character pattern
     if (/[äöüßÄÖÜ]|^(der|die|das|ein|nicht)\b/.test(potentialBack)) {
       return { front: potentialFront, back: potentialBack, type: 'vocab' };
     }
@@ -254,9 +472,9 @@ function parseGenericList(lines) {
   const cards = [];
 
   const separators = [
-    /^(.+?)\s*[-–—=:→]\s*(.+)$/,       // "word - translation", "word = translation"
-    /^(.+?)\s{3,}(.+)$/,                 // "word      translation" (3+ spaces)
-    /^(.+?)\t+(.+)$/,                     // "word\ttranslation" (tab-separated)
+    /^(.+?)\s*[-–—=:→]\s*(.+)$/,
+    /^(.+?)\s{3,}(.+)$/,
+    /^(.+?)\t+(.+)$/,
   ];
 
   for (const line of lines) {
@@ -264,41 +482,26 @@ function parseGenericList(lines) {
     for (const sep of separators) {
       const m = line.match(sep);
       if (m && m[1].trim() && m[2].trim()) {
-        cards.push({
-          front: m[1].trim(),
-          back: m[2].trim(),
-          type: 'vocab'
-        });
+        cards.push({ front: m[1].trim(), back: m[2].trim(), type: 'vocab' });
         matched = true;
         break;
       }
     }
 
-    // If no separator matched, try numbered list (for processes)
     if (!matched) {
       const numMatch = line.match(/^(\d+)[.)]\s*(.+)/);
       if (numMatch) {
-        cards.push({
-          front: numMatch[2].trim(),
-          back: '',
-          type: '_step',
-          stepNum: parseInt(numMatch[1])
-        });
+        cards.push({ front: numMatch[2].trim(), back: '', type: '_step', stepNum: parseInt(numMatch[1]) });
         matched = true;
       }
     }
 
-    // Unmatched lines: store as single-sided terms
     if (!matched && line.length > 3) {
-      cards.push({
-        front: line,
-        back: '',
-        type: '_unmatched'
-      });
+      cards.push({ front: line, back: '', type: '_unmatched' });
     }
   }
 
-  // Group consecutive _step items into a single process card
+  // Group consecutive _step items into process cards
   const result = [];
   let stepBuffer = [];
 
@@ -332,7 +535,28 @@ function parseGenericList(lines) {
   return result;
 }
 
-// Optional: Use Ollama for smarter parsing
+// === Post-Parse Cleanup ===
+
+function cleanParsedCards(cards) {
+  return cards.map(card => ({
+    ...card,
+    front: cleanCardText(card.front),
+    back: cleanCardText(card.back || ''),
+    steps: card.steps ? card.steps.map(cleanCardText) : card.steps
+  })).filter(c => c.front.length > 1);
+}
+
+function cleanCardText(text) {
+  return text
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[.,;:\s]+/, '')
+    .replace(/[.,;:\s]+$/, '')
+    .replace(/^\d{1,4}\s+/, '')
+    .trim();
+}
+
+// === Ollama Parsing ===
+
 async function parseWithOllama(rawText) {
   const settings = await getSettings();
   if (!settings.ollamaUrl) return null;
@@ -362,12 +586,10 @@ ${rawText}`
 
     const data = await response.json();
     const content = (data.message?.content || '').slice(0, 100000);
-    // Extract JSON from response
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
       const raw = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(raw)) return null;
-      // Sanitize: only allow expected fields
       const VALID_TYPES = ['vocab', 'term', 'process'];
       return raw.slice(0, 50).filter(c => c && typeof c === 'object' && c.front).map(c => ({
         type: VALID_TYPES.includes(c.type) ? c.type : 'vocab',
