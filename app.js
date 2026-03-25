@@ -4,10 +4,125 @@ let currentView = 'dashboard';
 let currentDeckId = null;
 let editingCardId = null;
 let confirmCallback = null;
+let _appPin = null; // PIN in memory for encrypting new API keys
+
+// === Lock Screen ===
+
+async function hashPin(pin) {
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(pin));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function initLockScreen() {
+  const pinHash = localStorage.getItem('lernapp-pin-hash');
+
+  if (!pinHash) {
+    // First launch: show setup
+    document.getElementById('lock-setup').classList.remove('hidden');
+    document.getElementById('lock-entry').classList.add('hidden');
+  } else {
+    // Returning user: show entry
+    document.getElementById('lock-entry').classList.remove('hidden');
+    document.getElementById('lock-setup').classList.add('hidden');
+    document.getElementById('lock-pin-entry').focus();
+  }
+
+  // Setup: create PIN
+  document.getElementById('btn-lock-setup').addEventListener('click', async () => {
+    const pin1 = document.getElementById('lock-pin-new').value;
+    const pin2 = document.getElementById('lock-pin-confirm').value;
+    const errorEl = document.getElementById('lock-setup-error');
+
+    if (!pin1 || pin1.length < 4) {
+      errorEl.textContent = 'PIN muss mindestens 4 Zeichen haben';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    if (pin1 !== pin2) {
+      errorEl.textContent = 'PINs stimmen nicht überein';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    const hash = await hashPin(pin1);
+    localStorage.setItem('lernapp-pin-hash', hash);
+    _appPin = pin1;
+
+    // Migrate existing plaintext API key to encrypted
+    const settings = await dbGet('settings', 'settings');
+    if (settings && settings.ollamaApiKey && !settings.encryptedOllamaApiKey) {
+      try {
+        const encrypted = await encryptWithPin(settings.ollamaApiKey, pin1);
+        _sessionApiKey = settings.ollamaApiKey;
+        await saveSettings({ encryptedOllamaApiKey: encrypted, ollamaApiKey: '' });
+      } catch (e) {
+        console.warn('Migration failed:', e);
+      }
+    }
+
+    unlockApp();
+  });
+
+  // Entry: verify PIN
+  document.getElementById('btn-lock-enter').addEventListener('click', verifyPin);
+  document.getElementById('lock-pin-entry').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') verifyPin();
+  });
+  document.getElementById('lock-pin-new').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('lock-pin-confirm').focus();
+  });
+  document.getElementById('lock-pin-confirm').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-lock-setup').click();
+  });
+}
+
+async function verifyPin() {
+  const pin = document.getElementById('lock-pin-entry').value;
+  const errorEl = document.getElementById('lock-entry-error');
+
+  if (!pin) {
+    errorEl.textContent = 'Bitte PIN eingeben';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  const hash = await hashPin(pin);
+  const stored = localStorage.getItem('lernapp-pin-hash');
+
+  if (hash !== stored) {
+    errorEl.textContent = 'Falsche PIN';
+    errorEl.classList.remove('hidden');
+    document.getElementById('lock-pin-entry').value = '';
+    return;
+  }
+
+  _appPin = pin;
+
+  // Decrypt API key if stored
+  const settings = await dbGet('settings', 'settings');
+  if (settings && settings.encryptedOllamaApiKey) {
+    try {
+      _sessionApiKey = await decryptWithPin(settings.encryptedOllamaApiKey, pin);
+    } catch (e) {
+      console.warn('API key decrypt failed:', e);
+      _sessionApiKey = '';
+    }
+  }
+
+  unlockApp();
+}
+
+function unlockApp() {
+  document.body.classList.remove('locked');
+  // Set session PIN for auto-backup encryption
+  _sessionPin = _appPin;
+  initApp();
+}
 
 // === Initialization ===
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initApp() {
   await openDB();
 
   // Apply saved theme
@@ -72,6 +187,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('set-theme').addEventListener('change', (e) => applyTheme(e.target.value));
 
+  // API Key buttons
+  document.getElementById('btn-api-key-change').addEventListener('click', () => {
+    document.getElementById('api-key-edit').classList.remove('hidden');
+    document.getElementById('set-ollama-key').value = '';
+    document.getElementById('set-ollama-key').focus();
+  });
+  document.getElementById('btn-api-key-cancel').addEventListener('click', () => {
+    document.getElementById('api-key-edit').classList.add('hidden');
+  });
+  document.getElementById('btn-api-key-save').addEventListener('click', async () => {
+    const key = document.getElementById('set-ollama-key').value.trim();
+    if (!key) { showToast('Bitte API Key eingeben'); return; }
+    await saveApiKey(key);
+  });
+  document.getElementById('btn-api-key-remove').addEventListener('click', () => {
+    showConfirm('API Key entfernen', 'Möchtest du den gespeicherten API Key wirklich entfernen?', removeApiKey, 'Entfernen', 'btn btn-danger');
+  });
+
   // Confirm modal
   document.getElementById('btn-confirm-no').addEventListener('click', closeConfirm);
   document.getElementById('btn-confirm-yes').addEventListener('click', () => {
@@ -120,6 +253,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load initial view
   await refreshDashboard();
+}
+
+// === DOMContentLoaded – starts lock screen ===
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await openDB();
+
+  // Apply theme before unlock so lock screen matches
+  const rawSettings = await dbGet('settings', 'settings');
+  if (rawSettings && rawSettings.theme) applyTheme(rawSettings.theme);
+
+  initLockScreen();
 });
 
 // === Navigation ===
@@ -1361,9 +1506,16 @@ async function refreshStats() {
 async function loadSettings() {
   const settings = await getSettings();
   document.getElementById('set-ollama-url').value = settings.ollamaUrl || '';
-  document.getElementById('set-ollama-key').value = settings.ollamaApiKey || '';
   document.getElementById('set-daily-goal').value = settings.dailyGoal || 20;
   document.getElementById('set-theme').value = settings.theme || 'dark';
+
+  // API Key status display
+  const hasKey = !!_sessionApiKey;
+  document.getElementById('api-key-text').textContent = hasKey ? '●●●●●●●● gespeichert' : 'Nicht gespeichert';
+  document.getElementById('api-key-text').style.color = hasKey ? 'var(--success)' : '';
+  document.getElementById('btn-api-key-remove').classList.toggle('hidden', !hasKey);
+  document.getElementById('api-key-edit').classList.add('hidden');
+  document.getElementById('api-key-status').classList.remove('hidden');
 
   // Auto-backup toggle
   const autoOn = localStorage.getItem('lernapp-auto-backup') !== 'false';
@@ -1402,11 +1554,34 @@ async function saveAppSettings() {
 
   await saveSettings({
     ollamaUrl,
-    ollamaApiKey: document.getElementById('set-ollama-key').value.trim(),
     dailyGoal: Math.min(200, Math.max(5, parseInt(document.getElementById('set-daily-goal').value) || 20)),
     theme
   });
   showToast('Einstellungen gespeichert');
+}
+
+// === API Key Management ===
+
+async function saveApiKey(newKey) {
+  if (!_appPin) { showToast('PIN nicht verfügbar'); return; }
+  try {
+    const encrypted = await encryptWithPin(newKey, _appPin);
+    _sessionApiKey = newKey;
+    await saveSettings({ encryptedOllamaApiKey: encrypted, ollamaApiKey: '' });
+    showToast('API Key gespeichert');
+    loadSettings();
+    autoBackup();
+  } catch (e) {
+    showToast('Verschlüsselung fehlgeschlagen');
+  }
+}
+
+async function removeApiKey() {
+  _sessionApiKey = '';
+  await saveSettings({ encryptedOllamaApiKey: '', ollamaApiKey: '' });
+  showToast('API Key entfernt');
+  loadSettings();
+  autoBackup();
 }
 
 async function restoreBackup() {

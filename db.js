@@ -302,14 +302,23 @@ const DEFAULT_SETTINGS = {
   key: 'settings',
   ollamaUrl: '',
   ollamaApiKey: '',
+  encryptedOllamaApiKey: '',
   dailyGoal: 20,
   theme: 'dark',
   streakFreezes: 2
 };
 
+// Session API key – decrypted at unlock, never stored in plaintext
+let _sessionApiKey = '';
+
 async function getSettings() {
   const settings = await dbGet('settings', 'settings');
-  return settings || { ...DEFAULT_SETTINGS };
+  const result = settings || { ...DEFAULT_SETTINGS };
+  // Inject session API key so consumers (ollama.js etc.) get it transparently
+  if (_sessionApiKey) {
+    result.ollamaApiKey = _sessionApiKey;
+  }
+  return result;
 }
 
 async function saveSettings(updates) {

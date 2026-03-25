@@ -58,6 +58,7 @@ async function autoBackup() {
     const enabled = localStorage.getItem('lernapp-auto-backup') !== 'false';
     if (!enabled) return;
 
+    const rawSettings = await dbGet('settings', 'settings');
     const settings = await getSettings();
     const data = {
       version: 2,
@@ -69,13 +70,9 @@ async function autoBackup() {
       settings: { ...settings, ollamaApiKey: '' }
     };
 
-    // Encrypt API key if available and session PIN is set
-    if (settings.ollamaApiKey && _sessionPin) {
-      try {
-        data.encryptedApiKey = await encryptWithPin(settings.ollamaApiKey, _sessionPin);
-      } catch (e) {
-        console.warn('Auto-backup encryption failed:', e);
-      }
+    // Include already-encrypted API key directly
+    if (rawSettings && rawSettings.encryptedOllamaApiKey) {
+      data.encryptedApiKey = rawSettings.encryptedOllamaApiKey;
     }
 
     localStorage.setItem('lernapp-backup', JSON.stringify(data));
@@ -105,20 +102,13 @@ async function restoreFromBackup() {
   if (data.reviews) for (const r of data.reviews) await dbPut('reviews', r);
   if (data.stats) for (const s of data.stats) await dbPut('stats', s);
 
-  // Decrypt and restore API key if present
+  // Store encrypted API key directly
   if (data.encryptedApiKey && typeof data.encryptedApiKey === 'string') {
-    const pin = await askPin(
-      'API-Key entschlüsseln',
-      'Das Backup enthält einen verschlüsselten API-Key. Gib die PIN ein.'
-    );
-    if (pin) {
+    await saveSettings({ encryptedOllamaApiKey: data.encryptedApiKey, ollamaApiKey: '' });
+    if (_sessionPin) {
       try {
-        const apiKey = await decryptWithPin(data.encryptedApiKey, pin);
-        await saveSettings({ ollamaApiKey: apiKey });
-        _sessionPin = pin;
-      } catch {
-        showToast('Falsche PIN – API-Key nicht wiederhergestellt');
-      }
+        _sessionApiKey = await decryptWithPin(data.encryptedApiKey, _sessionPin);
+      } catch { /* will be available at next unlock */ }
     }
   }
 
@@ -126,6 +116,7 @@ async function restoreFromBackup() {
 }
 
 async function exportAllData() {
+  const rawSettings = await dbGet('settings', 'settings');
   const settings = await getSettings();
   const data = {
     version: 2,
@@ -137,20 +128,9 @@ async function exportAllData() {
     settings: { ...settings, ollamaApiKey: '' }
   };
 
-  // If API key exists, offer to encrypt and include it
-  if (settings.ollamaApiKey) {
-    const pin = await askPin(
-      'API-Key schützen',
-      'Dein Ollama API-Key wird mit dieser PIN verschlüsselt im Backup gespeichert. Beim Import brauchst du die gleiche PIN.'
-    );
-    if (pin) {
-      try {
-        data.encryptedApiKey = await encryptWithPin(settings.ollamaApiKey, pin);
-        _sessionPin = pin; // Cache for auto-backup
-      } catch (e) {
-        console.warn('Encryption failed:', e);
-      }
-    }
+  // Include already-encrypted API key directly (no PIN dialog needed)
+  if (rawSettings && rawSettings.encryptedOllamaApiKey) {
+    data.encryptedApiKey = rawSettings.encryptedOllamaApiKey;
   }
 
   const json = JSON.stringify(data, null, 2);
@@ -226,19 +206,15 @@ async function importData(file) {
           }
         }
 
-        // Decrypt and restore API key if present
+        // Store encrypted API key directly (will be decrypted at next unlock with user's PIN)
         if (data.encryptedApiKey && typeof data.encryptedApiKey === 'string') {
-          const pin = await askPin(
-            'API-Key entschlüsseln',
-            'Das Backup enthält einen verschlüsselten API-Key. Gib die PIN ein, mit der er geschützt wurde.'
-          );
-          if (pin) {
+          await saveSettings({ encryptedOllamaApiKey: data.encryptedApiKey, ollamaApiKey: '' });
+          // Try to decrypt with current session PIN
+          if (_sessionPin) {
             try {
-              const apiKey = await decryptWithPin(data.encryptedApiKey, pin);
-              await saveSettings({ ollamaApiKey: apiKey });
-              _sessionPin = pin;
+              _sessionApiKey = await decryptWithPin(data.encryptedApiKey, _sessionPin);
             } catch {
-              showToast('Falsche PIN – API-Key nicht wiederhergestellt');
+              showToast('API-Key importiert – wird beim nächsten Entsperren verfügbar');
             }
           }
         }

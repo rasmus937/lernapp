@@ -807,3 +807,61 @@ html, body {
 .text-dim { color: var(--text-dim); }
 .text-sm { font-size: 13px; }
 .hidden { display: none !important; }
+
+/* === Lock Screen === */
+body.locked #app { display: none !important; }
+body:not(.locked) #lock-screen { display: none !important; }
+
+#lock-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+  padding: 24px;
+}
+
+.lock-container {
+  text-align: center;
+  width: 100%;
+  max-width: 360px;
+}
+
+.lock-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.8;
+}
+
+.lock-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--accent);
+}
+
+.lock-text {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.lock-input {
+  text-align: center;
+  font-size: 20px !important;
+  letter-spacing: 4px;
+}
+
+.lock-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* === API Key Status Row === */
+.api-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
