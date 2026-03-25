@@ -1350,14 +1350,12 @@ async function processScannedImage(imageSource) {
     scanRawText = text;
     document.getElementById('scan-step-ocr').classList.add('hidden');
 
-    // Try Ollama first, fallback to regex
-    let cards = await parseWithOllama(text);
-    if (!cards || cards.length === 0) {
-      cards = parseOCRText(text);
-    }
-    scanParsedCards = cards;
-
+    // Always use local parser first (instant results)
+    scanParsedCards = parseOCRText(text);
     showScanPreview();
+
+    // Then try Ollama correction in background (if connected)
+    tryOllamaCorrection();
   } catch (err) {
     showToast('OCR fehlgeschlagen: ' + (err?.message || String(err) || 'Unbekannter Fehler'));
     resetScanner();
@@ -1419,6 +1417,30 @@ function removeScanCard(index) {
   showScanPreview();
 }
 
+// Ollama background correction for scanned cards
+async function tryOllamaCorrection() {
+  const settings = await getSettings();
+  if (!settings.ollamaUrl || scanParsedCards.length === 0) return;
+
+  // Show indicator
+  const countEl = document.getElementById('scan-count');
+  const originalText = countEl.textContent;
+  countEl.textContent = originalText + ' – KI korrigiert...';
+
+  try {
+    const corrected = await correctCardsWithOllama(scanParsedCards);
+    if (corrected && corrected.length > 0) {
+      scanParsedCards = corrected;
+      showScanPreview();
+      countEl.textContent = `${scanParsedCards.length} Karten (KI-korrigiert)`;
+    } else {
+      countEl.textContent = originalText;
+    }
+  } catch {
+    countEl.textContent = originalText;
+  }
+}
+
 function toggleScanRaw() {
   document.getElementById('scan-raw-text').classList.toggle('hidden');
 }
@@ -1428,6 +1450,7 @@ function reparseScannedText() {
   scanParsedCards = parseOCRText(scanRawText);
   document.getElementById('scan-raw-text').classList.add('hidden');
   showScanPreview();
+  tryOllamaCorrection();
 }
 
 async function saveScanCards() {

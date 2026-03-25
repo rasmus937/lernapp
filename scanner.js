@@ -255,6 +255,12 @@ function cleanOCRText(rawText) {
     // Normalize various dash types
     l = l.replace(/[‐‑‒―]/g, '-');
 
+    // Strip lesson/page references like "L 14", "L14", "L.14", "L 14-17", "Lektion 5"
+    l = l.replace(/\bL\.?\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?\b/g, '');
+    l = l.replace(/\bLektion\s*\d{1,3}\b/gi, '');
+    l = l.replace(/\bKap\.?\s*\d{1,3}\b/gi, '');
+    l = l.replace(/\bSeite\s*\d+\b/gi, '');
+
     // Collapse multiple spaces to single
     l = l.replace(/\s{2,}/g, ' ');
 
@@ -551,6 +557,8 @@ function cleanLatinText(text) {
 
 function cleanCardText(text) {
   return text
+    .replace(/\bL\.?\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?\b/g, '')
+    .replace(/\bLektion\s*\d{1,3}\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[.,;:\s]+/, '')
     .replace(/[.,;:\s]+$/, '')
@@ -558,16 +566,36 @@ function cleanCardText(text) {
     .trim();
 }
 
-// === Ollama Parsing ===
+// === Ollama OCR Correction ===
 
-async function parseWithOllama(rawText) {
+async function correctCardsWithOllama(cards) {
   const settings = await getSettings();
-  if (!settings.ollamaUrl) return null;
+  if (!settings.ollamaUrl || cards.length === 0) return null;
 
   const headers = { 'Content-Type': 'application/json' };
   if (settings.ollamaApiKey) {
     headers['Authorization'] = 'Bearer ' + settings.ollamaApiKey;
   }
+
+  // Build a compact list of cards for correction
+  const cardList = cards.slice(0, 60).map((c, i) =>
+    `${i + 1}. ${c.front} | ${c.back}`
+  ).join('\n');
+
+  const prompt = `Du bist ein OCR-Korrektur-Assistent für lateinische Vokabellisten. Die folgenden Karten wurden per OCR gescannt und enthalten wahrscheinlich Fehler.
+
+AUFGABE:
+1. Korrigiere OCR-Fehler in den LATEINISCHEN Wörtern (z.B. "delectare" statt "oelectare", "iudicare" statt "iadicare")
+2. Korrigiere OCR-Fehler in den DEUTSCHEN Übersetzungen
+3. Entferne Lektionsangaben (L14, L 17 etc.) falls noch vorhanden
+4. Lass korrekte Einträge UNVERÄNDERT
+5. Trenne Front (Latein) und Back (Deutsch) korrekt
+
+WICHTIG: Gib NUR ein JSON-Array zurück. Jedes Element: {"front":"lateinisch","back":"deutsch"}
+Behalte die gleiche Reihenfolge und Anzahl bei. Keine Erklärungen, kein anderer Text.
+
+Karten (Format: Nr. front | back):
+${cardList}`;
 
   try {
     const response = await fetch(settings.ollamaUrl + '/api/chat', {
@@ -576,33 +604,32 @@ async function parseWithOllama(rawText) {
       body: JSON.stringify({
         model: 'qwen3:1.7b',
         stream: false,
-        messages: [{
-          role: 'user',
-          content: `Analysiere diesen Text aus einem Lehrbuch/Vokabelliste und extrahiere Lernkarten.
-Gib NUR ein JSON-Array zurück, jedes Element hat: { "type": "vocab"|"term"|"process", "front": "...", "back": "...", "steps": [...] (nur bei process) }
-
-Text:
-${rawText}`
-        }]
+        think: true,
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
+    if (!response.ok) return null;
     const data = await response.json();
     const content = (data.message?.content || '').slice(0, 100000);
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const raw = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(raw)) return null;
-      const VALID_TYPES = ['vocab', 'term', 'process'];
-      return raw.slice(0, 50).filter(c => c && typeof c === 'object' && c.front).map(c => ({
-        type: VALID_TYPES.includes(c.type) ? c.type : 'vocab',
-        front: String(c.front).slice(0, 500).trim(),
-        back: String(c.back || '').slice(0, 2000).trim(),
-        steps: Array.isArray(c.steps) ? c.steps.slice(0, 30).map(s => String(s).slice(0, 500).trim()) : null
-      }));
-    }
+    const jsonMatch = content.match(/\[[\s\S]*?\]/);
+    if (!jsonMatch) return null;
+
+    const corrected = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(corrected)) return null;
+
+    // Merge corrections back into original cards
+    return cards.map((original, i) => {
+      const fix = corrected[i];
+      if (!fix || typeof fix !== 'object') return original;
+      return {
+        ...original,
+        front: (typeof fix.front === 'string' && fix.front.trim()) ? fix.front.trim().slice(0, 500) : original.front,
+        back: (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : original.back
+      };
+    });
   } catch (err) {
-    console.warn('Ollama parsing failed:', err);
+    console.warn('Ollama correction failed:', err);
+    return null;
   }
-  return null;
 }
