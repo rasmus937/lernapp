@@ -457,6 +457,23 @@
         </div>
       </div>
     </div>
+
+    <!-- PIN Modal -->
+    <div class="modal-overlay" id="modal-pin">
+      <div class="modal">
+        <div class="modal-title" id="pin-title">PIN eingeben</div>
+        <p class="text-dim text-sm" id="pin-description"></p>
+        <div class="form-group mt-8">
+          <input type="password" class="form-input" id="pin-input" placeholder="PIN oder Passwort"
+                 autocomplete="off" inputmode="numeric">
+        </div>
+        <p class="text-dim text-sm hidden" id="pin-error" style="color:var(--danger)"></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="btn-pin-cancel">Abbrechen</button>
+          <button class="btn btn-primary" id="btn-pin-confirm">Bestätigen</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="db.js"></script>

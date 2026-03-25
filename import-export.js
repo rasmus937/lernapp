@@ -1,23 +1,82 @@
 // === Import & Export Module ===
 
+// === PIN-based Encryption (AES-GCM + PBKDF2) ===
+
+async function deriveKey(pin, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptWithPin(plaintext, pin) {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pin, salt);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    enc.encode(plaintext)
+  );
+  // Pack: salt(16) + iv(12) + ciphertext → Base64
+  const packed = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+  packed.set(salt, 0);
+  packed.set(iv, salt.length);
+  packed.set(new Uint8Array(ciphertext), salt.length + iv.length);
+  return btoa(String.fromCharCode(...packed));
+}
+
+async function decryptWithPin(encryptedBase64, pin) {
+  const packed = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+  const salt = packed.slice(0, 16);
+  const iv = packed.slice(16, 28);
+  const ciphertext = packed.slice(28);
+  const key = await deriveKey(pin, salt);
+  const dec = new TextDecoder();
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    ciphertext
+  );
+  return dec.decode(plaintext);
+}
+
+// Session PIN: cached in memory so auto-backup can encrypt without re-asking
+let _sessionPin = null;
+
 // Auto-backup: saves all data to localStorage after each significant change
 async function autoBackup() {
   try {
     const enabled = localStorage.getItem('lernapp-auto-backup') !== 'false';
     if (!enabled) return;
 
+    const settings = await getSettings();
     const data = {
-      version: 1,
+      version: 2,
       exported: new Date().toISOString(),
       decks: await dbGetAll('decks'),
       cards: await dbGetAll('cards'),
       reviews: await dbGetAll('reviews'),
-      stats: await dbGetAll('stats')
+      stats: await dbGetAll('stats'),
+      settings: { ...settings, ollamaApiKey: '' }
     };
 
-    // Exclude API key from localStorage backup for security
-    const settings = await getSettings();
-    data.settings = { ...settings, ollamaApiKey: '' };
+    // Encrypt API key if available and session PIN is set
+    if (settings.ollamaApiKey && _sessionPin) {
+      try {
+        data.encryptedApiKey = await encryptWithPin(settings.ollamaApiKey, _sessionPin);
+      } catch (e) {
+        console.warn('Auto-backup encryption failed:', e);
+      }
+    }
 
     localStorage.setItem('lernapp-backup', JSON.stringify(data));
     localStorage.setItem('lernapp-backup-date', data.exported);
@@ -46,19 +105,53 @@ async function restoreFromBackup() {
   if (data.reviews) for (const r of data.reviews) await dbPut('reviews', r);
   if (data.stats) for (const s of data.stats) await dbPut('stats', s);
 
+  // Decrypt and restore API key if present
+  if (data.encryptedApiKey && typeof data.encryptedApiKey === 'string') {
+    const pin = await askPin(
+      'API-Key entschlüsseln',
+      'Das Backup enthält einen verschlüsselten API-Key. Gib die PIN ein.'
+    );
+    if (pin) {
+      try {
+        const apiKey = await decryptWithPin(data.encryptedApiKey, pin);
+        await saveSettings({ ollamaApiKey: apiKey });
+        _sessionPin = pin;
+      } catch {
+        showToast('Falsche PIN – API-Key nicht wiederhergestellt');
+      }
+    }
+  }
+
   return data.decks.length;
 }
 
 async function exportAllData() {
+  const settings = await getSettings();
   const data = {
-    version: 1,
+    version: 2,
     exported: new Date().toISOString(),
     decks: await dbGetAll('decks'),
     cards: await dbGetAll('cards'),
     reviews: await dbGetAll('reviews'),
     stats: await dbGetAll('stats'),
-    settings: await getSettings()
+    settings: { ...settings, ollamaApiKey: '' }
   };
+
+  // If API key exists, offer to encrypt and include it
+  if (settings.ollamaApiKey) {
+    const pin = await askPin(
+      'API-Key schützen',
+      'Dein Ollama API-Key wird mit dieser PIN verschlüsselt im Backup gespeichert. Beim Import brauchst du die gleiche PIN.'
+    );
+    if (pin) {
+      try {
+        data.encryptedApiKey = await encryptWithPin(settings.ollamaApiKey, pin);
+        _sessionPin = pin; // Cache for auto-backup
+      } catch (e) {
+        console.warn('Encryption failed:', e);
+      }
+    }
+  }
 
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -130,6 +223,23 @@ async function importData(file) {
           for (const stat of data.stats) {
             const clean = sanitizeObj(stat, STAT_KEYS);
             if (clean && clean.date) await dbPut('stats', clean);
+          }
+        }
+
+        // Decrypt and restore API key if present
+        if (data.encryptedApiKey && typeof data.encryptedApiKey === 'string') {
+          const pin = await askPin(
+            'API-Key entschlüsseln',
+            'Das Backup enthält einen verschlüsselten API-Key. Gib die PIN ein, mit der er geschützt wurde.'
+          );
+          if (pin) {
+            try {
+              const apiKey = await decryptWithPin(data.encryptedApiKey, pin);
+              await saveSettings({ ollamaApiKey: apiKey });
+              _sessionPin = pin;
+            } catch {
+              showToast('Falsche PIN – API-Key nicht wiederhergestellt');
+            }
           }
         }
 

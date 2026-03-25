@@ -1523,6 +1523,51 @@ function closeConfirm() {
   btn.className = 'btn btn-danger';
 }
 
+// === PIN Modal ===
+
+function askPin(title, description) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal-pin');
+    const input = document.getElementById('pin-input');
+    const errorEl = document.getElementById('pin-error');
+    document.getElementById('pin-title').textContent = title;
+    document.getElementById('pin-description').textContent = description;
+    input.value = '';
+    errorEl.classList.add('hidden');
+    modal.classList.add('active');
+    input.focus();
+
+    function cleanup() {
+      modal.classList.remove('active');
+      document.getElementById('btn-pin-confirm').removeEventListener('click', onConfirm);
+      document.getElementById('btn-pin-cancel').removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onKey);
+    }
+    function onConfirm() {
+      const pin = input.value;
+      if (!pin || pin.length < 1) {
+        errorEl.textContent = 'Bitte PIN eingeben';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      cleanup();
+      resolve(pin);
+    }
+    function onCancel() { cleanup(); resolve(null); }
+    function onKey(e) { if (e.key === 'Enter') onConfirm(); if (e.key === 'Escape') onCancel(); }
+
+    document.getElementById('btn-pin-confirm').addEventListener('click', onConfirm);
+    document.getElementById('btn-pin-cancel').addEventListener('click', onCancel);
+    input.addEventListener('keydown', onKey);
+  });
+}
+
+function showPinError(msg) {
+  const el = document.getElementById('pin-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
 // === Toast Notification ===
 
 function showToast(message, duration = 2500) {
