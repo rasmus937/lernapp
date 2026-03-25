@@ -187,6 +187,24 @@ async function initApp() {
   });
   document.getElementById('set-theme').addEventListener('change', (e) => applyTheme(e.target.value));
 
+  // AI Provider switching
+  document.getElementById('set-ai-provider').addEventListener('change', updateAiProviderUI);
+
+  // AI Connection test
+  document.getElementById('btn-ai-test').addEventListener('click', async () => {
+    const statusText = document.getElementById('ai-status-text');
+    statusText.textContent = 'Teste...';
+    statusText.style.color = '';
+    const result = await testAiConnection();
+    if (result.ok) {
+      statusText.textContent = `Verbunden – Modell: ${result.model}`;
+      statusText.style.color = 'var(--success)';
+    } else {
+      statusText.textContent = `Fehler: ${result.error}`;
+      statusText.style.color = 'var(--danger)';
+    }
+  });
+
   // API Key buttons
   document.getElementById('btn-api-key-change').addEventListener('click', () => {
     document.getElementById('api-key-edit').classList.remove('hidden');
@@ -1047,12 +1065,11 @@ async function toggleAIPanel() {
   const panel = document.getElementById('ai-generate-panel');
   panel.classList.toggle('hidden');
   if (!panel.classList.contains('hidden')) {
-    // Check Ollama availability
-    const available = await isOllamaAvailable();
+    const available = await isAiAvailable();
     if (!available) {
       document.getElementById('ai-status').classList.remove('hidden');
       document.getElementById('ai-status').innerHTML =
-        '<span style="color:var(--warning)">Ollama nicht erreichbar. Bitte URL in den Einstellungen konfigurieren.</span>';
+        '<span style="color:var(--warning)">KI nicht erreichbar. Bitte in den Einstellungen konfigurieren.</span>';
     } else {
       document.getElementById('ai-status').classList.add('hidden');
     }
@@ -1419,8 +1436,8 @@ function removeScanCard(index) {
 
 // Ollama background correction for scanned cards
 async function tryOllamaCorrection() {
-  const settings = await getSettings();
-  if (!settings.ollamaUrl || scanParsedCards.length === 0) return;
+  const config = await getAiConfig();
+  if (!config || scanParsedCards.length === 0) return;
 
   // Show indicator
   const countEl = document.getElementById('scan-count');
@@ -1526,9 +1543,59 @@ async function refreshStats() {
 
 // === Settings ===
 
+// Show/hide AI settings fields based on selected provider
+function updateAiProviderUI() {
+  const provider = document.getElementById('set-ai-provider').value;
+  const urlGroup = document.getElementById('ai-url-group');
+  const keyGroup = document.getElementById('ai-key-group');
+  const modelGroup = document.getElementById('ai-model-group');
+  const statusBar = document.getElementById('ai-status-bar');
+
+  // Reset all hidden
+  urlGroup.classList.add('hidden');
+  keyGroup.classList.add('hidden');
+  modelGroup.classList.add('hidden');
+  statusBar.classList.add('hidden');
+
+  if (provider === 'none') return;
+
+  // Show status bar for all providers
+  statusBar.classList.remove('hidden');
+
+  if (provider === 'ollama-local') {
+    // No URL needed (default localhost), no key needed, model auto-detected
+    // Optional: model override
+    modelGroup.classList.remove('hidden');
+    document.getElementById('set-ai-model').placeholder = 'Automatisch (empfohlen)';
+  } else if (provider === 'ollama-cloud') {
+    urlGroup.classList.remove('hidden');
+    keyGroup.classList.remove('hidden');
+    modelGroup.classList.remove('hidden');
+    document.getElementById('set-ai-url').placeholder = 'https://ollama.example.com';
+    document.getElementById('set-ai-model').placeholder = 'Automatisch (empfohlen)';
+  } else if (provider === 'openai') {
+    urlGroup.classList.remove('hidden');
+    keyGroup.classList.remove('hidden');
+    modelGroup.classList.remove('hidden');
+    document.getElementById('set-ai-url').placeholder = 'https://api.openai.com (oder LM Studio, vLLM, ...)';
+    document.getElementById('set-ai-model').placeholder = 'z.B. gpt-4o-mini, llama3.1';
+  }
+}
+
 async function loadSettings() {
   const settings = await getSettings();
-  document.getElementById('set-ollama-url').value = settings.ollamaUrl || '';
+
+  // AI Provider fields
+  document.getElementById('set-ai-provider').value = settings.aiProvider || 'none';
+  document.getElementById('set-ai-url').value = settings.aiUrl || '';
+  document.getElementById('set-ai-model').value = settings.aiModel || '';
+  updateAiProviderUI();
+
+  // Reset connection status
+  document.getElementById('ai-status-text').textContent = 'Nicht getestet';
+  document.getElementById('ai-status-text').style.color = '';
+
+  // Learning & theme
   document.getElementById('set-daily-goal').value = settings.dailyGoal || 20;
   document.getElementById('set-theme').value = settings.theme || 'dark';
 
@@ -1557,26 +1624,38 @@ async function loadSettings() {
 }
 
 async function saveAppSettings() {
-  const ollamaUrl = document.getElementById('set-ollama-url').value.trim();
-  // Validate Ollama URL: must be HTTPS (or localhost for dev)
-  if (ollamaUrl) {
+  const aiProvider = document.getElementById('set-ai-provider').value;
+  const aiUrl = document.getElementById('set-ai-url').value.trim();
+  const aiModel = document.getElementById('set-ai-model').value.trim();
+
+  // Validate AI URL if required
+  if (aiUrl) {
     try {
-      const url = new URL(ollamaUrl);
+      const url = new URL(aiUrl);
       if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {
-        showToast('Ollama URL muss HTTPS verwenden');
+        showToast('API URL muss HTTPS verwenden (außer localhost)');
         return;
       }
     } catch {
-      showToast('Ungültige Ollama URL');
+      showToast('Ungültige API URL');
       return;
     }
+  }
+
+  // Cloud/OpenAI providers require a URL
+  if ((aiProvider === 'ollama-cloud' || aiProvider === 'openai') && !aiUrl) {
+    showToast('Bitte API URL eingeben');
+    return;
   }
 
   const theme = document.getElementById('set-theme').value;
   if (!['dark', 'light'].includes(theme)) return;
 
+  // Build ollamaUrl for backward compatibility (used by getAiConfig via aiUrl)
   await saveSettings({
-    ollamaUrl,
+    aiProvider,
+    aiUrl,
+    aiModel,
     dailyGoal: Math.min(200, Math.max(5, parseInt(document.getElementById('set-daily-goal').value) || 20)),
     theme
   });

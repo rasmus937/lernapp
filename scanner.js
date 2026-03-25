@@ -569,15 +569,12 @@ function cleanCardText(text) {
 // === Ollama OCR Correction ===
 
 async function correctCardsWithOllama(cards) {
-  const settings = await getSettings();
-  if (!settings.ollamaUrl || cards.length === 0) return null;
+  if (cards.length === 0) return null;
 
-  const headers = { 'Content-Type': 'application/json' };
-  if (settings.ollamaApiKey) {
-    headers['Authorization'] = 'Bearer ' + settings.ollamaApiKey;
-  }
+  // Check if AI is configured
+  const config = await getAiConfig();
+  if (!config) return null;
 
-  // Build a compact list of cards for correction
   const cardList = cards.slice(0, 60).map((c, i) =>
     `${i + 1}. ${c.front} | ${c.back}`
   ).join('\n');
@@ -598,27 +595,13 @@ Karten (Format: Nr. front | back):
 ${cardList}`;
 
   try {
-    const response = await fetch(settings.ollamaUrl + '/api/chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'qwen3:1.7b',
-        stream: false,
-        think: true,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = (data.message?.content || '').slice(0, 100000);
+    const content = await aiChat([{ role: 'user', content: prompt }]);
     const jsonMatch = content.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) return null;
 
     const corrected = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(corrected)) return null;
 
-    // Merge corrections back into original cards
     return cards.map((original, i) => {
       const fix = corrected[i];
       if (!fix || typeof fix !== 'object') return original;
@@ -629,7 +612,7 @@ ${cardList}`;
       };
     });
   } catch (err) {
-    console.warn('Ollama correction failed:', err);
+    console.warn('AI correction failed:', err);
     return null;
   }
 }

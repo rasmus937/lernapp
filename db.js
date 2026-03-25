@@ -300,9 +300,13 @@ async function getAllStats() {
 
 const DEFAULT_SETTINGS = {
   key: 'settings',
+  aiProvider: 'none',       // 'none' | 'ollama-local' | 'ollama-cloud' | 'openai'
+  aiUrl: '',                // Custom URL (empty = default for provider)
+  aiModel: '',              // Manual model override (empty = auto-select)
+  encryptedOllamaApiKey: '',
+  // Legacy fields (kept for migration)
   ollamaUrl: '',
   ollamaApiKey: '',
-  encryptedOllamaApiKey: '',
   dailyGoal: 20,
   theme: 'dark',
   streakFreezes: 2

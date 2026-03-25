@@ -364,12 +364,25 @@
         <h2 style="font-size:18px; font-weight:700;" class="mb-16">Einstellungen</h2>
 
         <div class="card">
-          <div class="card-title">Ollama Cloud</div>
+          <div class="card-title">KI-Anbindung</div>
           <div class="form-group mt-8">
-            <label>API URL</label>
-            <input type="url" class="form-input" id="set-ollama-url" placeholder="https://...">
+            <label>Anbieter</label>
+            <select class="form-select" id="set-ai-provider">
+              <option value="none">Keine KI</option>
+              <option value="ollama-local">Ollama (lokal)</option>
+              <option value="ollama-cloud">Ollama Cloud</option>
+              <option value="openai">OpenAI-kompatibel</option>
+            </select>
           </div>
-          <div class="form-group">
+
+          <!-- URL (hidden for ollama-local) -->
+          <div class="form-group hidden" id="ai-url-group">
+            <label>API URL</label>
+            <input type="url" class="form-input" id="set-ai-url" placeholder="https://...">
+          </div>
+
+          <!-- API Key (hidden for ollama-local) -->
+          <div class="form-group hidden" id="ai-key-group">
             <label>API Key</label>
             <div id="api-key-status" class="api-key-row">
               <span class="text-dim text-sm" id="api-key-text">Nicht gespeichert</span>
@@ -384,6 +397,20 @@
                 <button class="btn btn-secondary" id="btn-api-key-cancel" style="flex:1; padding:8px 12px; font-size:13px">Abbrechen</button>
                 <button class="btn btn-primary" id="btn-api-key-save" style="flex:1; padding:8px 12px; font-size:13px">Key speichern</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Model (for openai-compat, or manual override) -->
+          <div class="form-group hidden" id="ai-model-group">
+            <label>Modell</label>
+            <input type="text" class="form-input" id="set-ai-model" placeholder="z.B. gpt-4o-mini, llama3.1">
+          </div>
+
+          <!-- Connection status -->
+          <div id="ai-status-bar" class="mt-8 hidden">
+            <div class="flex-between">
+              <span class="text-sm" id="ai-status-text">Nicht verbunden</span>
+              <button class="btn btn-secondary" id="btn-ai-test" style="padding:6px 12px; font-size:12px">Verbindung testen</button>
             </div>
           </div>
         </div>
