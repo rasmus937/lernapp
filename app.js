@@ -1665,7 +1665,7 @@ async function saveAppSettings() {
 // === API Key Management ===
 
 async function saveApiKey(newKey) {
-  if (!_appPin) { showToast('PIN nicht verfügbar'); return; }
+  if (!_appPin) { showToast('PIN nicht verfügbar – bitte App neu starten'); return; }
   try {
     const encrypted = await encryptWithPin(newKey, _appPin);
     _sessionApiKey = newKey;
@@ -1674,7 +1674,8 @@ async function saveApiKey(newKey) {
     loadSettings();
     autoBackup();
   } catch (e) {
-    showToast('Verschlüsselung fehlgeschlagen');
+    console.error('API key encryption failed:', e);
+    showToast('Verschlüsselung fehlgeschlagen: ' + (e.message || 'Unbekannter Fehler'));
   }
 }
 

@@ -31,7 +31,10 @@ async function encryptWithPin(plaintext, pin) {
   packed.set(salt, 0);
   packed.set(iv, salt.length);
   packed.set(new Uint8Array(ciphertext), salt.length + iv.length);
-  return btoa(String.fromCharCode(...packed));
+  // Convert to base64 safely (spread can hit argument limit on large arrays)
+  let binary = '';
+  for (let i = 0; i < packed.length; i++) binary += String.fromCharCode(packed[i]);
+  return btoa(binary);
 }
 
 async function decryptWithPin(encryptedBase64, pin) {
