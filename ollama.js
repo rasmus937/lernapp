@@ -19,9 +19,7 @@ async function getAiConfig() {
   if (provider === 'ollama-local') {
     url = settings.aiUrl || 'http://localhost:11434';
   } else if (provider === 'ollama-cloud') {
-    // Use CORS proxy if configured, otherwise direct URL
-    url = settings.aiProxyUrl || settings.aiUrl || 'https://api.ollama.com';
-    if (!url) return null;
+    url = 'https://api.ollama.com';
   } else if (provider === 'openai') {
     url = settings.aiUrl || '';
     if (!url) return null;

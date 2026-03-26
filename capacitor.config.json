@@ -1,0 +1,13 @@
+{
+  "appId": "com.rasmu.lernapp",
+  "appName": "LernApp",
+  "webDir": "www",
+  "server": {
+    "url": "https://rasmus937.github.io/lernapp/",
+    "cleartext": false,
+    "allowNavigation": ["api.ollama.com", "*.ollama.com", "*.openai.com"]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

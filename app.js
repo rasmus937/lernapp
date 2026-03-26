@@ -190,35 +190,6 @@ async function initApp() {
   // AI Provider switching
   document.getElementById('set-ai-provider').addEventListener('change', updateAiProviderUI);
 
-  // Proxy help link
-  document.getElementById('proxy-help-link').addEventListener('click', (e) => {
-    e.preventDefault();
-    showConfirm('CORS Proxy einrichten',
-      'Ollama Cloud blockiert Browser-Anfragen (CORS).\n\n' +
-      '1. Erstelle einen kostenlosen Cloudflare-Account\n' +
-      '2. Gehe zu Workers & Pages → Create\n' +
-      '3. Füge diesen Code ein:\n\n' +
-      'export default {\n' +
-      '  async fetch(request) {\n' +
-      '    if (request.method === "OPTIONS") {\n' +
-      '      return new Response(null, { headers: {\n' +
-      '        "Access-Control-Allow-Origin": "*",\n' +
-      '        "Access-Control-Allow-Headers": "Content-Type, Authorization",\n' +
-      '        "Access-Control-Allow-Methods": "GET, POST, OPTIONS"\n' +
-      '      }});\n' +
-      '    }\n' +
-      '    const url = new URL(request.url);\n' +
-      '    url.hostname = "api.ollama.com";\n' +
-      '    const resp = await fetch(url, request);\n' +
-      '    const newResp = new Response(resp.body, resp);\n' +
-      '    newResp.headers.set("Access-Control-Allow-Origin", "*");\n' +
-      '    return newResp;\n' +
-      '  }\n' +
-      '}\n\n' +
-      '4. Deploy → Worker-URL hier eintragen',
-      () => {}, 'OK', 'btn btn-primary');
-  });
-
   // AI Connection test
   document.getElementById('btn-ai-test').addEventListener('click', async () => {
     const statusText = document.getElementById('ai-status-text');
@@ -1580,14 +1551,12 @@ async function refreshStats() {
 // Show/hide AI settings fields based on selected provider
 function updateAiProviderUI() {
   const provider = document.getElementById('set-ai-provider').value;
-  const proxyGroup = document.getElementById('ai-proxy-group');
   const urlGroup = document.getElementById('ai-url-group');
   const keyGroup = document.getElementById('ai-key-group');
   const modelGroup = document.getElementById('ai-model-group');
   const statusBar = document.getElementById('ai-status-bar');
 
   // Reset all hidden
-  proxyGroup.classList.add('hidden');
   urlGroup.classList.add('hidden');
   keyGroup.classList.add('hidden');
   modelGroup.classList.add('hidden');
@@ -1602,7 +1571,6 @@ function updateAiProviderUI() {
     modelGroup.classList.remove('hidden');
     document.getElementById('set-ai-model').placeholder = 'Automatisch (empfohlen)';
   } else if (provider === 'ollama-cloud') {
-    proxyGroup.classList.remove('hidden');
     keyGroup.classList.remove('hidden');
     modelGroup.classList.remove('hidden');
     document.getElementById('set-ai-model').placeholder = 'Automatisch (empfohlen)';
@@ -1620,7 +1588,6 @@ async function loadSettings() {
 
   // AI Provider fields
   document.getElementById('set-ai-provider').value = settings.aiProvider || 'none';
-  document.getElementById('set-ai-proxy').value = settings.aiProxyUrl || '';
   document.getElementById('set-ai-url').value = settings.aiUrl || '';
   document.getElementById('set-ai-model').value = settings.aiModel || '';
   updateAiProviderUI();
@@ -1674,20 +1641,19 @@ async function loadSettings() {
 
 async function saveAppSettings() {
   const aiProvider = document.getElementById('set-ai-provider').value;
-  const aiProxyUrl = document.getElementById('set-ai-proxy').value.trim();
   const aiUrl = document.getElementById('set-ai-url').value.trim();
   const aiModel = document.getElementById('set-ai-model').value.trim();
 
-  // Validate URLs
-  for (const checkUrl of [aiUrl, aiProxyUrl].filter(u => u)) {
+  // Validate URL
+  if (aiUrl) {
     try {
-      const url = new URL(checkUrl);
+      const url = new URL(aiUrl);
       if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {
         showToast('URLs müssen HTTPS verwenden (außer localhost)');
         return;
       }
     } catch {
-      showToast('Ungültige URL: ' + checkUrl);
+      showToast('Ungültige URL: ' + aiUrl);
       return;
     }
   }
@@ -1703,7 +1669,6 @@ async function saveAppSettings() {
 
   await saveSettings({
     aiProvider,
-    aiProxyUrl,
     aiUrl,
     aiModel,
     dailyGoal: Math.min(200, Math.max(5, parseInt(document.getElementById('set-daily-goal').value) || 20)),
@@ -1732,7 +1697,13 @@ async function saveAppSettings() {
 async function saveApiKey(newKey) {
   try {
     _sessionApiKey = newKey;
-    await saveSettings({ ollamaApiKey: newKey });
+    const settings = await getSettings();
+    const updates = { ollamaApiKey: newKey };
+    // Auto-set provider to ollama-cloud if no provider is configured
+    if (!settings.aiProvider || settings.aiProvider === 'none') {
+      updates.aiProvider = 'ollama-cloud';
+    }
+    await saveSettings(updates);
     showToast('API Key gespeichert');
     loadSettings();
     autoBackup();
