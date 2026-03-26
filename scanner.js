@@ -589,13 +589,26 @@ async function correctCardsWithOllama(cards, onProgress) {
       `${i + 1}. ${c.front} | ${c.back}`
     ).join('\n');
 
-    const prompt = `Du korrigierst OCR-Fehler in lateinischen Vokabelkarten. OCR verwechselt oft ähnliche Buchstaben:
-- l/I/1 (kleines L, großes i, Eins)
-- o/0 (Buchstabe o, Null)
-- n/ri, rn/m, d/cl, u/a, e/c
-- Großbuchstaben am Wortanfang fehlen oder sind falsch
+    const prompt = `Du korrigierst NUR OCR-Zeichenfehler in lateinischen Vokabelkarten.
 
-Korrigiere die lateinischen Wörter zu korrektem Latein. Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
+REGELN:
+- Korrigiere NUR falsch erkannte Zeichen (z.B. l/I/1, o/0, n/ri, rn/m, d/cl, u/a, e/c)
+- Die Stammformen (Infinitiv, 1.Sg.Präs., Perfekt, Supinum) sind korrekt – NICHT inhaltlich ändern!
+- Ändere NICHT die Anzahl, Reihenfolge oder Struktur der Stammformen
+- Füge KEINE fehlenden Formen hinzu und entferne KEINE vorhandenen Formen
+- Wenn ein Eintrag korrekt aussieht, lass ihn UNVERÄNDERT
+- Korrigiere auch deutsche Übersetzungen nur bei offensichtlichen OCR-Fehlern
+
+Beispiele für korrekte OCR-Korrekturen:
+- "pond, posui, positum" → "pono, posui, positum" (o→n erkannt)
+- "iadicare" → "iudicare" (a→u erkannt)
+- "consuItum" → "consultum" (I→l erkannt)
+
+Beispiele für FALSCHE Korrekturen (NICHT machen!):
+- "sentire, sentio, sensi" → "sentire, sensi, sensum" ← FALSCH: Formen verändert
+- Stammformen ergänzen, verdoppeln oder umordnen ← FALSCH
+
+Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
 Gleiche Reihenfolge und Anzahl.
 
 ${cardList}`;
