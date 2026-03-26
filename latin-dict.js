@@ -1709,6 +1709,107 @@ const LATIN_DICT = new Set([
   'scivi', 'scivit', 'sciverunt', 'scitum',
   'sciebam', 'sciam',
 
+  // ── Additional common forms (from OCR testing) ──
+  'oblectare', 'oblecto', 'oblectavi', 'oblectatum',
+  'exspectare', 'exspecto', 'exspectavi', 'exspectatum',
+  'expectare', 'expecto', 'expectavi', 'expectatum',
+  'consisto', 'consistere', 'constiti',
+  'constituo', 'constituere', 'constitui', 'constitutum',
+  'haud', 'haut',
+  'pono', 'ponere', 'posui', 'positum',
+  'iudicare', 'iudico', 'iudicavi', 'iudicatum', 'iudicium',
+  'delectare', 'delecto', 'delectavi', 'delectatum',
+  'consulere', 'consulo', 'consului', 'consultum', 'consultare',
+  'consilium', 'consili', 'consilio',
+  'sentire', 'sentio', 'sensi', 'sensum',
+  'tollere', 'tollo', 'sustuli', 'sublatum',
+  'rapere', 'rapio', 'rapui', 'raptum',
+  'accidere', 'accido', 'accidi',
+  'procedere', 'procedo', 'processi', 'processum',
+  'tradere', 'trado', 'tradidi', 'traditum',
+  'praebere', 'praebeo', 'praebui', 'praebitum',
+  'desistere', 'desisto', 'destiti',
+  'resistere', 'resisto', 'restiti',
+  'existimare', 'existimo', 'existimavi', 'existimatum',
+  'navigare', 'navigo', 'navigavi', 'navigatum',
+  'imperare', 'impero', 'imperavi', 'imperatum',
+  'liberare', 'libero', 'liberavi', 'liberatum',
+  'occupare', 'occupo', 'occupavi', 'occupatum',
+  'superare', 'supero', 'superavi', 'superatum',
+  'appellare', 'appello', 'appellavi', 'appellatum',
+  'nuntiare', 'nuntio', 'nuntiavi', 'nuntiatum',
+  'cogitare', 'cogito', 'cogitavi', 'cogitatum',
+  'spectare', 'specto', 'spectavi', 'spectatum',
+  'demonstrare', 'demonstro', 'demonstravi', 'demonstratum',
+  'regnare', 'regno', 'regnavi', 'regnatum',
+  'narrare', 'narro', 'narravi', 'narratum',
+  'orare', 'oro', 'oravi', 'oratum',
+  'temptare', 'tempto', 'temptavi', 'temptatum',
+  'tentare', 'tento', 'tentavi', 'tentatum',
+  'errare', 'erro', 'erravi', 'erratum',
+  'exclamare', 'exclamo', 'exclamavi', 'exclamatum',
+  'incitare', 'incito', 'incitavi', 'incitatum',
+  'invitare', 'invito', 'invitavi', 'invitatum',
+  'laudare', 'laudo', 'laudavi', 'laudatum',
+  'mandare', 'mando', 'mandavi', 'mandatum',
+  'negare', 'nego', 'negavi', 'negatum',
+  'optare', 'opto', 'optavi', 'optatum',
+  'parare', 'paro', 'paravi', 'paratum',
+  'portare', 'porto', 'portavi', 'portatum',
+  'servare', 'servo', 'servavi', 'servatum',
+  'vastare', 'vasto', 'vastavi', 'vastatum',
+  'vulnerare', 'vulnero', 'vulneravi', 'vulneratum',
+  'dolere', 'doleo', 'dolui', 'dolitum',
+  'gaudere', 'gaudeo', 'gavisus',
+  'merere', 'mereo', 'merui', 'meritum',
+  'studere', 'studeo', 'studui',
+  'suadere', 'suadeo', 'suasi', 'suasum',
+  'terrere', 'terreo', 'terrui', 'territum',
+  'valere', 'valeo', 'valui', 'valitum',
+  'colere', 'colo', 'colui', 'cultum',
+  'contendere', 'contendo', 'contendi', 'contentum',
+  'credere', 'credo', 'credidi', 'creditum',
+  'currere', 'curro', 'cucurri', 'cursum',
+  'defendere', 'defendo', 'defendi', 'defensum',
+  'gerere', 'gero', 'gessi', 'gestum',
+  'ludere', 'ludo', 'lusi', 'lusum',
+  'pellere', 'pello', 'pepuli', 'pulsum',
+  'quaerere', 'quaero', 'quaesivi', 'quaesitum',
+  'solvere', 'solvo', 'solvi', 'solutum',
+  'surgere', 'surgo', 'surrexi', 'surrectum',
+  'tangere', 'tango', 'tetigi', 'tactum',
+  'vertere', 'verto', 'verti', 'versum',
+  'vivere', 'vivo', 'vixi', 'victum',
+  'accipere', 'accipio', 'accepi', 'acceptum',
+  'conspicere', 'conspicio', 'conspexi', 'conspectum',
+  'efficere', 'efficio', 'effeci', 'effectum',
+  'incipere', 'incipio', 'incepi', 'inceptum',
+  'perficere', 'perficio', 'perfeci', 'perfectum',
+  'interficere', 'interficio', 'interfeci', 'interfectum',
+  'aperire', 'aperio', 'aperui', 'apertum',
+  'munire', 'munio', 'munivi', 'munitum',
+  'invenire', 'invenio', 'inveni', 'inventum',
+  'pervenire', 'pervenio', 'perveni', 'perventum',
+  'convenire', 'convenio', 'conveni', 'conventum',
+
+  // ── Common nouns/adjectives from textbooks ──
+  'itineris', 'itinere', 'iter',
+  'imperator', 'imperatoris', 'imperatore', 'imperatorem',
+  'senator', 'senatoris', 'senatorem', 'senatore',
+  'orator', 'oratoris', 'oratorem', 'oratore',
+  'gladiator', 'gladiatoris',
+  'periculum', 'periculi', 'periculo',
+  'auxilium', 'auxili', 'auxilio',
+  'beneficium', 'benefici', 'beneficio',
+  'imperium', 'imperii', 'imperio',
+  'studium', 'studi', 'studio',
+  'negotium', 'negoti', 'negotio',
+  'officium', 'offici', 'officio',
+  'praemium', 'praemi', 'praemio',
+  'proelium', 'proeli', 'proelio',
+  'spatium', 'spati', 'spatio',
+  'pretium', 'preti', 'pretio',
+
 ]);
 
 // ──────────────────────────────────────────────────────────
@@ -1800,7 +1901,7 @@ function correctWithDictionary(cards) {
 
       const [, prefix, word, suffix] = match;
 
-      // Skip short words
+      // Skip very short words
       if (word.length < 3) return token;
 
       const lowerWord = word.toLowerCase();
@@ -1808,7 +1909,9 @@ function correctWithDictionary(cards) {
       // Already in dictionary → keep as-is
       if (LATIN_DICT.has(lowerWord)) return token;
 
-      const result = bestMatch(lowerWord, 2);
+      // Scale max distance by word length: short words get less tolerance
+      const maxDist = word.length <= 4 ? 1 : 2;
+      const result = bestMatch(lowerWord, maxDist);
       if (!result || result.distance === 0) return token;
 
       // Preserve original capitalisation pattern
