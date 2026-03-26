@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -211,13 +211,21 @@ async function initApp() {
     const statusText = document.getElementById('ai-status-text');
     statusText.textContent = 'Teste...';
     statusText.style.color = '';
+
+    // Save current UI values first so the test uses them
+    const aiModel = document.getElementById('set-ai-model').value.trim();
+    const aiProvider = document.getElementById('set-ai-provider').value;
+    const aiUrl = document.getElementById('set-ai-url').value.trim();
+    await saveSettings({ aiProvider, aiUrl, aiModel });
+
     const result = await testAiConnection();
     if (result.ok) {
       statusText.textContent = `Verbunden – Modell: ${result.model}`;
       statusText.style.color = 'var(--success)';
-      // Update model field with detected model
-      if (result.model) {
+      // If model field was empty, fill with detected model and save it
+      if (!aiModel && result.model) {
         document.getElementById('set-ai-model').value = result.model;
+        await saveSettings({ aiModel: result.model });
       }
     } else {
       statusText.textContent = `Fehler: ${result.error}`;
@@ -1464,13 +1472,13 @@ async function tryOllamaCorrection() {
   const config = await getAiConfig();
   if (!config || scanParsedCards.length === 0) return;
 
-  // Show indicator
   const countEl = document.getElementById('scan-count');
   const originalText = countEl.textContent;
-  countEl.textContent = originalText + ' – KI korrigiert...';
 
   try {
-    const corrected = await correctCardsWithOllama(scanParsedCards);
+    const corrected = await correctCardsWithOllama(scanParsedCards, (current, total) => {
+      countEl.textContent = `KI korrigiert... (${current}/${total})`;
+    });
     if (corrected && corrected.length > 0) {
       scanParsedCards = corrected;
       showScanPreview();
@@ -1617,13 +1625,14 @@ async function loadSettings() {
   if (settings.aiProvider && settings.aiProvider !== 'none') {
     statusText.textContent = 'Teste Verbindung...';
     statusText.style.color = '';
-    testAiConnection().then(result => {
+    testAiConnection().then(async result => {
       if (result.ok) {
         statusText.textContent = 'Verbunden – Modell: ' + result.model;
         statusText.style.color = 'var(--success)';
-        // Update model field if it was auto-detected and saved
-        if (result.model && !document.getElementById('set-ai-model').value) {
+        // First time: save detected model so it stays consistent
+        if (result.model && !settings.aiModel) {
           document.getElementById('set-ai-model').value = result.model;
+          await saveSettings({ aiModel: result.model });
         }
       } else {
         statusText.textContent = 'Nicht verbunden: ' + result.error;

@@ -568,60 +568,62 @@ function cleanCardText(text) {
 
 // === Ollama OCR Correction ===
 
-async function correctCardsWithOllama(cards) {
+async function correctCardsWithOllama(cards, onProgress) {
   if (cards.length === 0) return null;
 
-  // Check if AI is configured
   const config = await getAiConfig();
   if (!config) return null;
 
-  const cardList = cards.slice(0, 60).map((c, i) =>
-    `${i + 1}. ${c.front} | ${c.back}`
-  ).join('\n');
+  const BATCH_SIZE = 20;
+  const result = [...cards];
+  const totalBatches = Math.ceil(Math.min(cards.length, 60) / BATCH_SIZE);
 
-  const prompt = `Du bist ein OCR-Korrektur-Assistent für lateinische Vokabellisten. Die folgenden Karten wurden per OCR gescannt und enthalten wahrscheinlich Fehler.
+  for (let batch = 0; batch < totalBatches; batch++) {
+    const start = batch * BATCH_SIZE;
+    const end = Math.min(start + BATCH_SIZE, cards.length, 60);
+    const batchCards = cards.slice(start, end);
 
-AUFGABE:
-1. Korrigiere OCR-Fehler in den LATEINISCHEN Wörtern (z.B. "delectare" statt "oelectare", "iudicare" statt "iadicare")
-2. Korrigiere OCR-Fehler in den DEUTSCHEN Übersetzungen
-3. Entferne Lektionsangaben (L14, L 17 etc.) falls noch vorhanden
-4. Lass korrekte Einträge UNVERÄNDERT
-5. Trenne Front (Latein) und Back (Deutsch) korrekt
+    if (onProgress) onProgress(batch + 1, totalBatches);
 
-WICHTIG: Gib NUR ein JSON-Array zurück. Jedes Element: {"front":"lateinisch","back":"deutsch"}
-Behalte die gleiche Reihenfolge und Anzahl bei. Keine Erklärungen, kein anderer Text.
+    const cardList = batchCards.map((c, i) =>
+      `${i + 1}. ${c.front} | ${c.back}`
+    ).join('\n');
 
-Karten (Format: Nr. front | back):
+    const prompt = `Korrigiere OCR-Fehler in diesen ${batchCards.length} Vokabelkarten. Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
+Gleiche Reihenfolge und Anzahl. Korrekte Einträge unverändert lassen.
+
 ${cardList}`;
 
-  try {
-    const content = await aiChat([{ role: 'user', content: prompt }]);
+    try {
+      const content = await aiChat([{ role: 'user', content: prompt }]);
 
-    // Extract JSON array – models often wrap in ```json ... ```
-    let jsonStr = null;
-    const codeBlock = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-    if (codeBlock) {
-      jsonStr = codeBlock[1];
-    } else {
-      const arrayMatch = content.match(/\[[\s\S]*\]/);
-      if (arrayMatch) jsonStr = arrayMatch[0];
+      let jsonStr = null;
+      const codeBlock = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      if (codeBlock) {
+        jsonStr = codeBlock[1];
+      } else {
+        const arrayMatch = content.match(/\[[\s\S]*\]/);
+        if (arrayMatch) jsonStr = arrayMatch[0];
+      }
+      if (!jsonStr) continue;
+
+      const corrected = JSON.parse(jsonStr);
+      if (!Array.isArray(corrected)) continue;
+
+      for (let i = 0; i < batchCards.length; i++) {
+        const fix = corrected[i];
+        if (!fix || typeof fix !== 'object') continue;
+        const idx = start + i;
+        result[idx] = {
+          ...result[idx],
+          front: (typeof fix.front === 'string' && fix.front.trim()) ? fix.front.trim().slice(0, 500) : result[idx].front,
+          back: (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : result[idx].back
+        };
+      }
+    } catch (err) {
+      console.warn('AI correction batch ' + (batch + 1) + ' failed:', err);
     }
-    if (!jsonStr) return null;
-
-    const corrected = JSON.parse(jsonStr);
-    if (!Array.isArray(corrected)) return null;
-
-    return cards.map((original, i) => {
-      const fix = corrected[i];
-      if (!fix || typeof fix !== 'object') return original;
-      return {
-        ...original,
-        front: (typeof fix.front === 'string' && fix.front.trim()) ? fix.front.trim().slice(0, 500) : original.front,
-        back: (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : original.back
-      };
-    });
-  } catch (err) {
-    console.warn('AI correction failed:', err);
-    return null;
   }
+
+  return result;
 }

@@ -144,7 +144,7 @@ async function testAiConnection() {
       if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
       const data = await resp.json();
       const models = (data.models || []).map(m => m.name || m.model || '');
-      const best = await detectBestModel(config, true);
+      const best = await detectBestModel(config);
       return { ok: true, model: best || models[0] || '?', models };
     } else {
       // OpenAI-compatible: try /v1/models
