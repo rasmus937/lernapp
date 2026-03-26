@@ -129,6 +129,11 @@ async function initApp() {
   const settings = await getSettings();
   applyTheme(settings.theme);
 
+  // Auto-migration: if API key exists but no provider set, default to ollama-cloud
+  if (settings.ollamaApiKey && (!settings.aiProvider || settings.aiProvider === 'none')) {
+    await saveSettings({ aiProvider: 'ollama-cloud' });
+  }
+
   // Navigation
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
