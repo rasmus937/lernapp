@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -1405,7 +1405,7 @@ async function processScannedImage(imageSource) {
     showScanPreview();
 
     // Then try Ollama correction in background (if connected)
-    tryOllamaCorrection();
+    tryDictionaryCorrection();
   } catch (err) {
     showToast('OCR fehlgeschlagen: ' + (err?.message || String(err) || 'Unbekannter Fehler'));
     resetScanner();
@@ -1467,27 +1467,18 @@ function removeScanCard(index) {
   showScanPreview();
 }
 
-// Ollama background correction for scanned cards
-async function tryOllamaCorrection() {
-  const config = await getAiConfig();
-  if (!config || scanParsedCards.length === 0) return;
+// Dictionary-based OCR correction for scanned cards (instant, no AI needed)
+function tryDictionaryCorrection() {
+  if (scanParsedCards.length === 0 || typeof correctWithDictionary !== 'function') return;
 
   const countEl = document.getElementById('scan-count');
-  const originalText = countEl.textContent;
+  const corrected = correctWithDictionary(scanParsedCards);
 
-  try {
-    const corrected = await correctCardsWithOllama(scanParsedCards, (current, total) => {
-      countEl.textContent = `KI korrigiert... (${current}/${total})`;
-    });
-    if (corrected && corrected.length > 0) {
-      scanParsedCards = corrected;
-      showScanPreview();
-      countEl.textContent = `${scanParsedCards.length} Karten (KI-korrigiert)`;
-    } else {
-      countEl.textContent = originalText;
-    }
-  } catch {
-    countEl.textContent = originalText;
+  const changes = scanParsedCards.filter((c, i) => c.front !== corrected[i].front).length;
+  if (changes > 0) {
+    scanParsedCards = corrected;
+    showScanPreview();
+    countEl.textContent = `${scanParsedCards.length} Karten (${changes} korrigiert)`;
   }
 }
 
@@ -1500,7 +1491,7 @@ function reparseScannedText() {
   scanParsedCards = parseOCRText(scanRawText);
   document.getElementById('scan-raw-text').classList.add('hidden');
   showScanPreview();
-  tryOllamaCorrection();
+  tryDictionaryCorrection();
 }
 
 async function saveScanCards() {
