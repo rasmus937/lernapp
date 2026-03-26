@@ -302,6 +302,7 @@ const DEFAULT_SETTINGS = {
   key: 'settings',
   aiProvider: 'none',       // 'none' | 'ollama-local' | 'ollama-cloud' | 'openai'
   aiUrl: '',                // Custom URL (empty = default for provider)
+  aiProxyUrl: '',           // CORS proxy URL for ollama-cloud (Cloudflare Worker)
   aiModel: '',              // Manual model override (empty = auto-select)
   encryptedOllamaApiKey: '',
   // Legacy fields (kept for migration)
