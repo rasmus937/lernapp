@@ -589,8 +589,14 @@ async function correctCardsWithOllama(cards, onProgress) {
       `${i + 1}. ${c.front} | ${c.back}`
     ).join('\n');
 
-    const prompt = `Korrigiere OCR-Fehler in diesen ${batchCards.length} Vokabelkarten. Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
-Gleiche Reihenfolge und Anzahl. Korrekte Einträge unverändert lassen.
+    const prompt = `Du korrigierst OCR-Fehler in lateinischen Vokabelkarten. OCR verwechselt oft ähnliche Buchstaben:
+- l/I/1 (kleines L, großes i, Eins)
+- o/0 (Buchstabe o, Null)
+- n/ri, rn/m, d/cl, u/a, e/c
+- Großbuchstaben am Wortanfang fehlen oder sind falsch
+
+Korrigiere die lateinischen Wörter zu korrektem Latein. Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
+Gleiche Reihenfolge und Anzahl.
 
 ${cardList}`;
 

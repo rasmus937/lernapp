@@ -3,8 +3,8 @@
 // Model preference order for auto-selection (fast + capable first)
 const AI_MODEL_PREFERENCE = [
   // Cloud: fast, capable models (small enough for quick responses)
-  'gemma3:27b', 'gemma3:12b', 'gemma3:4b',
   'ministral-3:14b', 'ministral-3:8b', 'ministral-3:3b',
+  'gemma3:27b', 'gemma3:12b', 'gemma3:4b',
   'qwen3-next:80b', 'qwen3.5:397b',
   'nemotron-3-nano:30b', 'nemotron-3-super',
   'devstral-small-2:24b', 'gpt-oss:20b', 'rnj-1:8b',
