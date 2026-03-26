@@ -1,8 +1,19 @@
 // === AI Module – Central abstraction for Ollama / OpenAI-compatible APIs ===
 
-// Model preference order for auto-selection (best first)
-// Cloud models first (Ollama Cloud), then local models
+// Model preference order for auto-selection (fast + capable first)
 const AI_MODEL_PREFERENCE = [
+  // Cloud: fast, capable models (small enough for quick responses)
+  'gemma3:27b', 'gemma3:12b', 'gemma3:4b',
+  'ministral-3:14b', 'ministral-3:8b', 'ministral-3:3b',
+  'qwen3-next:80b', 'qwen3.5:397b',
+  'nemotron-3-nano:30b', 'nemotron-3-super',
+  'devstral-small-2:24b', 'gpt-oss:20b', 'rnj-1:8b',
+  'glm-5', 'glm-4.7', 'glm-4.6',
+  'minimax-m2.5', 'minimax-m2.1', 'minimax-m2', 'minimax-m2.7',
+  'deepseek-v3.2', 'deepseek-v3.1:671b',
+  'kimi-k2.5', 'kimi-k2:1t',
+  'cogito-2.1:671b', 'qwen3-coder:480b',
+  // Local: small models for on-device use
   'qwen3:8b', 'qwen3:4b', 'qwen3:1.7b', 'qwen2.5:7b', 'qwen2.5:3b', 'qwen2.5:1.5b',
   'llama3.1:8b', 'llama3:8b', 'gemma2:9b', 'gemma2:2b', 'phi3:mini', 'mistral:7b'
 ];
@@ -184,10 +195,18 @@ WICHTIG:
 
   const content = await aiChat([{ role: 'user', content: prompt }]);
 
-  const jsonMatch = content.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('KI hat kein gültiges JSON zurückgegeben');
+  // Extract JSON – models often wrap in ```json ... ```
+  let jsonStr = null;
+  const codeBlock = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+  if (codeBlock) {
+    jsonStr = codeBlock[1];
+  } else {
+    const arrayMatch = content.match(/\[[\s\S]*\]/);
+    if (arrayMatch) jsonStr = arrayMatch[0];
+  }
+  if (!jsonStr) throw new Error('KI hat kein gültiges JSON zurückgegeben');
 
-  const raw = JSON.parse(jsonMatch[0]);
+  const raw = JSON.parse(jsonStr);
   if (!Array.isArray(raw)) throw new Error('Erwartetes Array nicht gefunden');
 
   const VALID_TYPES = ['vocab', 'term', 'process'];

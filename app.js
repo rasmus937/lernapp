@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -134,6 +134,15 @@ async function initApp() {
   // Auto-migration: if API key exists but no provider set, default to ollama-cloud
   if (settings.ollamaApiKey && (!settings.aiProvider || settings.aiProvider === 'none')) {
     await saveSettings({ aiProvider: 'ollama-cloud' });
+  }
+
+  // Re-detect model if current one is outdated (from old preference list)
+  if (settings.aiModel && settings.aiProvider === 'ollama-cloud') {
+    const validModels = typeof AI_MODEL_PREFERENCE !== 'undefined' ? AI_MODEL_PREFERENCE : [];
+    const isKnown = validModels.some(m => settings.aiModel === m || settings.aiModel.startsWith(m.split(':')[0] + ':'));
+    if (!isKnown) {
+      await saveSettings({ aiModel: '' }); // clear → triggers re-detection
+    }
   }
 
   // Navigation

@@ -596,10 +596,19 @@ ${cardList}`;
 
   try {
     const content = await aiChat([{ role: 'user', content: prompt }]);
-    const jsonMatch = content.match(/\[[\s\S]*?\]/);
-    if (!jsonMatch) return null;
 
-    const corrected = JSON.parse(jsonMatch[0]);
+    // Extract JSON array – models often wrap in ```json ... ```
+    let jsonStr = null;
+    const codeBlock = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+    if (codeBlock) {
+      jsonStr = codeBlock[1];
+    } else {
+      const arrayMatch = content.match(/\[[\s\S]*\]/);
+      if (arrayMatch) jsonStr = arrayMatch[0];
+    }
+    if (!jsonStr) return null;
+
+    const corrected = JSON.parse(jsonStr);
     if (!Array.isArray(corrected)) return null;
 
     return cards.map((original, i) => {
