@@ -549,6 +549,30 @@
     </div>
   </div>
 
+  <script>
+  // Force SW update: fetch sw.js directly from network, compare version
+  (async function() {
+    if (!navigator.serviceWorker) return;
+    try {
+      const resp = await fetch('sw.js?_=' + Date.now(), { cache: 'no-store' });
+      if (!resp.ok) return;
+      const text = await resp.text();
+      const match = text.match(/CACHE_NAME\s*=\s*'lernapp-v(\d+)'/);
+      if (!match) return;
+      const serverVersion = parseInt(match[1]);
+      const keys = await caches.keys();
+      const currentKey = keys.find(k => k.startsWith('lernapp-v'));
+      const currentVersion = currentKey ? parseInt(currentKey.replace('lernapp-v', '')) : 0;
+      if (serverVersion > currentVersion) {
+        // New version available: unregister old SW, clear caches, reload
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+        for (const k of keys) await caches.delete(k);
+        location.reload();
+      }
+    } catch(e) { /* offline or error – ignore */ }
+  })();
+  </script>
   <script src="db.js"></script>
   <script src="sm2.js"></script>
   <script src="gamification.js"></script>
