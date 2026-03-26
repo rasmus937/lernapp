@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -206,6 +206,10 @@ async function initApp() {
     if (result.ok) {
       statusText.textContent = `Verbunden – Modell: ${result.model}`;
       statusText.style.color = 'var(--success)';
+      // Update model field with detected model
+      if (result.model) {
+        document.getElementById('set-ai-model').value = result.model;
+      }
     } else {
       statusText.textContent = `Fehler: ${result.error}`;
       statusText.style.color = 'var(--danger)';
@@ -1608,6 +1612,10 @@ async function loadSettings() {
       if (result.ok) {
         statusText.textContent = 'Verbunden – Modell: ' + result.model;
         statusText.style.color = 'var(--success)';
+        // Update model field if it was auto-detected and saved
+        if (result.model && !document.getElementById('set-ai-model').value) {
+          document.getElementById('set-ai-model').value = result.model;
+        }
       } else {
         statusText.textContent = 'Nicht verbunden: ' + result.error;
         statusText.style.color = 'var(--danger)';

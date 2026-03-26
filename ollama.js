@@ -1,6 +1,7 @@
 // === AI Module – Central abstraction for Ollama / OpenAI-compatible APIs ===
 
 // Model preference order for auto-selection (best first)
+// Cloud models first (Ollama Cloud), then local models
 const AI_MODEL_PREFERENCE = [
   'qwen3:8b', 'qwen3:4b', 'qwen3:1.7b', 'qwen2.5:7b', 'qwen2.5:3b', 'qwen2.5:1.5b',
   'llama3.1:8b', 'llama3:8b', 'gemma2:9b', 'gemma2:2b', 'phi3:mini', 'mistral:7b'
@@ -38,9 +39,10 @@ async function getAiConfig() {
 }
 
 // Auto-detect best available model via Ollama /api/tags
-async function detectBestModel(config) {
+// If save=true, persists the choice so it stays consistent
+async function detectBestModel(config, save = false) {
   if (!config || !config.isOllama) return config?.model || '';
-  if (config.model) return config.model; // manual override
+  if (config.model) return config.model; // manual override or previously saved
 
   try {
     const resp = await fetch(config.url + '/api/tags', { headers: config.headers });
@@ -48,19 +50,29 @@ async function detectBestModel(config) {
     const data = await resp.json();
     const available = (data.models || []).map(m => m.name || m.model || '');
 
+    let best = '';
+
     // Match against preference list
     for (const preferred of AI_MODEL_PREFERENCE) {
       if (available.some(a => a === preferred || a.startsWith(preferred.split(':')[0] + ':'))) {
         const exact = available.find(a => a === preferred);
-        if (exact) return exact;
+        if (exact) { best = exact; break; }
         // Partial match (same base model)
         const base = preferred.split(':')[0];
         const partial = available.find(a => a.startsWith(base + ':'));
-        if (partial) return partial;
+        if (partial) { best = partial; break; }
       }
     }
     // Fallback: first available model
-    return available[0] || '';
+    if (!best) best = available[0] || '';
+
+    // Save detected model so it stays consistent across sessions
+    if (best && save) {
+      await saveSettings({ aiModel: best });
+      config.model = best;
+    }
+
+    return best;
   } catch {
     return '';
   }
@@ -121,7 +133,7 @@ async function testAiConnection() {
       if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
       const data = await resp.json();
       const models = (data.models || []).map(m => m.name || m.model || '');
-      const best = await detectBestModel(config);
+      const best = await detectBestModel(config, true);
       return { ok: true, model: best || models[0] || '?', models };
     } else {
       // OpenAI-compatible: try /v1/models
