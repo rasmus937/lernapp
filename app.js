@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -1472,13 +1472,24 @@ function tryDictionaryCorrection() {
   if (scanParsedCards.length === 0 || typeof correctWithDictionary !== 'function') return;
 
   const countEl = document.getElementById('scan-count');
-  const corrected = correctWithDictionary(scanParsedCards);
+  const result = correctWithDictionary(scanParsedCards);
 
-  const changes = scanParsedCards.filter((c, i) => c.front !== corrected[i].front).length;
+  const correctedCards = result.corrected;
+  const unmatched = result.unmatched;
+  const changes = scanParsedCards.filter((c, i) => c.front !== correctedCards[i].front).length;
+
   if (changes > 0) {
-    scanParsedCards = corrected;
+    scanParsedCards = correctedCards;
     showScanPreview();
     countEl.textContent = `${scanParsedCards.length} Karten (${changes} korrigiert)`;
+  }
+
+  // Notify about unmatched words
+  if (unmatched.length > 0) {
+    const unique = [...new Set(unmatched)];
+    const display = unique.slice(0, 10).join(', ');
+    const more = unique.length > 10 ? ` (+${unique.length - 10} weitere)` : '';
+    showToast(`${unique.length} Wörter nicht im Wörterbuch: ${display}${more}`, 5000);
   }
 }
 
