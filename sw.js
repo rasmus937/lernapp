@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lernapp-v26';
+const CACHE_NAME = 'lernapp-v27';
 const ASSETS = [
   './',
   './index.html',
@@ -34,23 +34,19 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (!e.request.url.startsWith(self.location.origin)) return;
 
+  // Network-first: try network, fall back to cache (ensures updates arrive immediately)
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      // Cache-first, fallback to network
-      if (cached) return cached;
-      return fetch(e.request).then(response => {
-        // Only cache same-origin, successful responses with valid content types
-        if (response.ok && response.url.startsWith(self.location.origin)) {
-          const ct = response.headers.get('content-type') || '';
-          const safe = ['text/html', 'text/css', 'application/javascript', 'text/javascript',
-                        'image/svg+xml', 'image/png', 'application/json', 'application/manifest+json'];
-          if (safe.some(t => ct.includes(t))) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-          }
+    fetch(e.request).then(response => {
+      if (response.ok && response.url.startsWith(self.location.origin)) {
+        const ct = response.headers.get('content-type') || '';
+        const safe = ['text/html', 'text/css', 'application/javascript', 'text/javascript',
+                      'image/svg+xml', 'image/png', 'application/json', 'application/manifest+json'];
+        if (safe.some(t => ct.includes(t))) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
-        return response;
-      });
-    }).catch(() => caches.match('./index.html'))
+      }
+      return response;
+    }).catch(() => caches.match(e.request).then(cached => cached || caches.match('./index.html')))
   );
 });

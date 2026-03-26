@@ -1,5 +1,7 @@
 // === LernApp – Main Application ===
 
+const APP_VERSION = '1.1.0';
+
 let currentView = 'dashboard';
 let currentDeckId = null;
 let editingCardId = null;
@@ -1642,6 +1644,10 @@ async function loadSettings() {
   } else {
     statusEl.textContent = 'Kein Backup vorhanden';
   }
+
+  // Version anzeigen
+  const verEl = document.getElementById('app-version');
+  if (verEl) verEl.textContent = 'LernApp v' + APP_VERSION;
 }
 
 async function saveAppSettings() {
