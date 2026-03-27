@@ -338,6 +338,12 @@ const DE_STARTER_WORDS = [
   // Additional starters
   'alle','alles','kein','keine','viel','viele','wenig','wenige',
   'mehr','selbst','nur','so','wie','wo','weg','teil',
+  // More adverbs/adjectives
+  'zusammen','gemeinsam','als','niemals','ebenfalls','außer',
+  'bewegen','beeinflussen','beschließen','entscheiden','aufstellen',
+  'festsetzen','leugnen','ablehnen','schleppen','pflegen','verehren',
+  'bebauen','erfahren','aushalten','ertragen',
+  'retten','bewahren','schicken','werfen',
 ];
 const DE_STARTERS = new RegExp('\\b(' + DE_STARTER_WORDS.join('|') + ')\\b', 'i');
 
@@ -621,7 +627,12 @@ function cleanLatinText(text) {
     .replace(/ä/g, 'a').replace(/Ä/g, 'A')
     .replace(/ß/g, 'ss')
     .replace(/&/g, 'e')
+    // Lowercase words that aren't proper nouns: initial cap before lowercase, or ALL CAPS short words
     .replace(/\b[A-Z](?=[a-z]{2,})/g, m => m.toLowerCase())
+    // Fix single uppercase letter at end of word (e.g. vivO → vivo)
+    .replace(/\b([a-z]+)([A-Z])\b/g, (_, pre, ch) => pre + ch.toLowerCase())
+    // Fix ALL CAPS short words (e.g. ST → st) – only 2-3 letter words
+    .replace(/\b([A-Z]{2,3})\b/g, m => m.toLowerCase())
     .split(/(\s+|[,;:()\-–\/]+)/).map(part =>
       /^[a-z]{3,}$/.test(part) ? autoCorrectLatinOCR(part) : part
     ).join('');
@@ -782,7 +793,8 @@ const GERMAN_UMLAUT_FIXES = {
   'ubel': 'übel', 'uber': 'über', 'Ubel': 'Übel',
   'fur': 'für', 'Tur': 'Tür', 'zuruck': 'zurück',
   'glucken': 'glücken', 'Gluck': 'Glück', 'Stuck': 'Stück',
-  'Bruder': 'Brüder', 'Mutter': 'Mütter', 'Vater': 'Väter',
+  'Korper': 'Körper', 'korperlich': 'körperlich',
+  'Krafte': 'Kräfte',
   'wahlen': 'wählen', 'erzahlen': 'erzählen', 'zahlen': 'zählen',
   'gefahrlich': 'gefährlich', 'jahrlich': 'jährlich', 'ahnlich': 'ähnlich',
   'machtig': 'mächtig', 'unganglich': 'ungänglich', 'umganglich': 'umgänglich',
