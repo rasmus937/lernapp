@@ -1,18 +1,18 @@
 // === AI Module – Central abstraction for Ollama / OpenAI-compatible APIs ===
 
-// Model preference order for auto-selection (fast + capable first)
+// Model preference order for auto-selection (quality first, then speed)
 const AI_MODEL_PREFERENCE = [
-  // Cloud: fast, capable models (small enough for quick responses)
-  'ministral-3:14b', 'ministral-3:8b', 'ministral-3:3b',
-  'gemma3:27b', 'gemma3:12b', 'gemma3:4b',
-  'qwen3-next:80b', 'qwen3.5:397b',
-  'nemotron-3-nano:30b', 'nemotron-3-super',
-  'devstral-small-2:24b', 'gpt-oss:20b', 'rnj-1:8b',
-  'glm-5', 'glm-4.7', 'glm-4.6',
-  'minimax-m2.5', 'minimax-m2.1', 'minimax-m2', 'minimax-m2.7',
+  // Cloud: strongest models first
   'deepseek-v3.2', 'deepseek-v3.1:671b',
   'kimi-k2.5', 'kimi-k2:1t',
-  'cogito-2.1:671b', 'qwen3-coder:480b',
+  'qwen3-next:80b', 'qwen3.5:397b', 'cogito-2.1:671b', 'qwen3-coder:480b',
+  'nemotron-3-super', 'nemotron-3-nano:30b',
+  'glm-5', 'glm-4.7', 'glm-4.6',
+  'minimax-m2.7', 'minimax-m2.5', 'minimax-m2.1', 'minimax-m2',
+  'gpt-oss:120b', 'gpt-oss:20b',
+  'gemma3:27b', 'gemma3:12b', 'gemma3:4b',
+  'ministral-3:14b', 'ministral-3:8b', 'ministral-3:3b',
+  'devstral-small-2:24b', 'rnj-1:8b',
   // Local: small models for on-device use
   'qwen3:8b', 'qwen3:4b', 'qwen3:1.7b', 'qwen2.5:7b', 'qwen2.5:3b', 'qwen2.5:1.5b',
   'llama3.1:8b', 'llama3:8b', 'gemma2:9b', 'gemma2:2b', 'phi3:mini', 'mistral:7b'
@@ -53,7 +53,15 @@ async function getAiConfig() {
 // If save=true, persists the choice so it stays consistent
 async function detectBestModel(config, save = false) {
   if (!config || !config.isOllama) return config?.model || '';
-  if (config.model) return config.model; // manual override or previously saved
+  // If a model is saved, check if a higher-priority model is now available
+  // (one-time migration: preference list was reordered)
+  const savedIdx = config.model ? AI_MODEL_PREFERENCE.findIndex(p => config.model.startsWith(p.split(':')[0])) : -1;
+  if (config.model && savedIdx > 3) {
+    // Saved model is low-priority, re-detect
+    config.model = '';
+    save = true;
+  }
+  if (config.model) return config.model;
 
   try {
     const resp = await fetch(config.url + '/api/tags', { headers: config.headers });
