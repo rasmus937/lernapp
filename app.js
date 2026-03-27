@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -1206,6 +1206,7 @@ function initScanner() {
   document.getElementById('btn-scan-capture').addEventListener('click', captureScanPhoto);
   document.getElementById('btn-scan-cancel-cam').addEventListener('click', closeScanCamera);
   document.getElementById('btn-scan-raw').addEventListener('click', toggleScanRaw);
+  document.getElementById('btn-scan-ai-correct').addEventListener('click', runAiCorrection);
   document.getElementById('btn-scan-reparse').addEventListener('click', reparseScannedText);
   document.getElementById('btn-scan-restart').addEventListener('click', resetScanner);
   document.getElementById('btn-scan-save').addEventListener('click', saveScanCards);
@@ -1463,6 +1464,44 @@ async function showScanPreview() {
 function removeScanCard(index) {
   scanParsedCards.splice(index, 1);
   showScanPreview();
+}
+
+async function runAiCorrection() {
+  if (scanParsedCards.length === 0) return;
+  const btn = document.getElementById('btn-scan-ai-correct');
+  const countEl = document.getElementById('scan-count');
+
+  try {
+    // Check if AI is configured
+    const config = typeof getAiConfig === 'function' ? await getAiConfig() : null;
+    if (!config) {
+      showToast('Keine KI konfiguriert – bitte unter Einstellungen API Key hinterlegen');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'KI prüft...';
+
+    const corrected = await correctCardsWithOllama(scanParsedCards, (batch, total) => {
+      btn.textContent = `KI prüft (${batch}/${total})...`;
+    });
+
+    if (corrected) {
+      const changes = scanParsedCards.filter((c, i) =>
+        c.front !== corrected[i].front || c.back !== corrected[i].back
+      ).length;
+      scanParsedCards = corrected;
+      showScanPreview();
+      countEl.textContent = `${scanParsedCards.length} Karten (${changes} KI-korrigiert)`;
+    } else {
+      showToast('KI-Korrektur konnte nicht durchgeführt werden');
+    }
+  } catch (err) {
+    showToast('KI-Korrektur fehlgeschlagen: ' + (err?.message || 'Fehler'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'KI-Korrektur';
+  }
 }
 
 function toggleScanRaw() {

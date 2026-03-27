@@ -551,12 +551,22 @@ function cleanParsedCards(cards) {
     /^[a-z]/.test(c.front) && /[,;]/.test(c.front)
   ).length >= cards.length * 0.3;
 
-  return cards.map(card => ({
+  let result = cards.map(card => ({
     ...card,
     front: isLatin ? cleanLatinText(cleanCardText(card.front)) : cleanCardText(card.front),
     back: isLatin ? autoCorrectGermanOCR(cleanCardText(card.back || '')) : cleanCardText(card.back || ''),
     steps: card.steps ? card.steps.map(cleanCardText) : card.steps
   })).filter(c => c.front.length > 1);
+
+  // Grammar-aware correction for Latin entries
+  if (isLatin) {
+    result = result.map(card => ({
+      ...card,
+      front: correctByGrammar(card.front)
+    }));
+  }
+
+  return result;
 }
 
 // Clean Latin text: strip umlauts/accents that are OCR artifacts
@@ -601,6 +611,133 @@ function autoCorrectLatinOCR(word) {
   }
 
   return w;
+}
+
+// === Grammar-aware Latin OCR correction ===
+// Detects noun/verb entries and validates each form against expected endings.
+// Fixes forms that don't match (e.g., iudicit→iudicii in genitive position).
+
+const LATIN_GENITIVE_ENDINGS = ['ae', 'i', 'ii', 'is', 'us', 'ei', 'ium', 'um', 'orum', 'arum', 'onis', 'inis', 'itis', 'oris', 'eris', 'inis', 'utis', 'alis', 'aris', 'ionis'];
+const LATIN_INFINITIVE_ENDINGS = ['are', 'ere', 'ire', 're'];
+const LATIN_1STPERSON_ENDINGS = ['o', 'or'];
+const LATIN_PERFECT_ENDINGS = ['i', 'ivi', 'ui', 'si', 'xi', 'di', 'ci', 'vi'];
+const LATIN_SUPINE_ENDINGS = ['um', 'tum', 'sum', 'ctum', 'ptum', 'xtum', 'itum', 'atum', 'etum', 'utum'];
+
+function matchesAnyEnding(word, endings) {
+  return endings.some(e => word.endsWith(e));
+}
+
+function correctByGrammar(front) {
+  // Split into forms: "word1, word2, word3" or "word1, word2; Gen. word3"
+  const parts = front.split(/,\s*/);
+  if (parts.length < 2) return front;
+
+  // Detect entry type from gender markers or form count
+  const lastPart = parts[parts.length - 1].trim();
+  const genderMatch = lastPart.match(/\b([mfn])$/);
+  const hasGender = genderMatch !== null;
+
+  // Also check for gender marker after semicolon in 2nd part: "iter, itineris n"
+  const secondPart = parts[1] ? parts[1].trim() : '';
+  const genderInSecond = secondPart.match(/^(\S+)\s+([mfn])$/);
+
+  if (hasGender || genderInSecond) {
+    // NOUN entry: nominative, genitive [gender]
+    return correctNounEntry(parts, front);
+  }
+
+  // Check for verb pattern: infinitive (-re), 1st person (-o), perfect (-i), supine (-um)
+  const firstWord = parts[0].trim().split(/\s/)[0];
+  if (matchesAnyEnding(firstWord, LATIN_INFINITIVE_ENDINGS) && parts.length >= 3) {
+    return correctVerbEntry(parts, front);
+  }
+
+  return front;
+}
+
+function correctNounEntry(parts, original) {
+  // parts[0] = nominative, parts[1] = genitive (possibly + gender)
+  if (parts.length < 2) return original;
+
+  const genPart = parts[1].trim();
+  // Extract genitive word (remove gender marker and other suffixes)
+  const genMatch = genPart.match(/^(\S+)/);
+  if (!genMatch) return original;
+  const genWord = genMatch[1];
+
+  // Check if genitive has a valid ending
+  if (matchesAnyEnding(genWord, LATIN_GENITIVE_ENDINGS)) return original;
+
+  // Try fixing the ending: find closest valid genitive ending
+  const fixed = tryFixEnding(genWord, LATIN_GENITIVE_ENDINGS);
+  if (fixed && fixed !== genWord) {
+    return original.replace(genWord, fixed);
+  }
+
+  return original;
+}
+
+function correctVerbEntry(parts, original) {
+  let result = original;
+
+  // parts[0] = infinitive, [1] = 1st person, [2] = perfect, [3] = supine
+  const forms = parts.map(p => p.trim().split(/\s/)[0]);
+
+  // Check 1st person (position 1)
+  if (forms[1] && !matchesAnyEnding(forms[1], LATIN_1STPERSON_ENDINGS)) {
+    const fixed = tryFixEnding(forms[1], LATIN_1STPERSON_ENDINGS);
+    if (fixed && fixed !== forms[1]) result = result.replace(forms[1], fixed);
+  }
+
+  // Check perfect (position 2)
+  if (forms[2] && !matchesAnyEnding(forms[2], LATIN_PERFECT_ENDINGS)) {
+    const fixed = tryFixEnding(forms[2], LATIN_PERFECT_ENDINGS);
+    if (fixed && fixed !== forms[2]) result = result.replace(forms[2], fixed);
+  }
+
+  // Check supine (position 3)
+  if (forms[3] && !matchesAnyEnding(forms[3], LATIN_SUPINE_ENDINGS)) {
+    const fixed = tryFixEnding(forms[3], LATIN_SUPINE_ENDINGS);
+    if (fixed && fixed !== forms[3]) result = result.replace(forms[3], fixed);
+  }
+
+  return result;
+}
+
+// Try to fix a word ending by finding the closest valid Latin ending
+// Only changes 1-2 characters at the end (conservative)
+function tryFixEnding(word, validEndings) {
+  if (word.length < 3) return word;
+
+  // Try replacing last 1-3 characters with valid endings
+  for (let cut = 1; cut <= 3 && cut < word.length - 1; cut++) {
+    const stem = word.slice(0, -cut);
+    for (const ending of validEndings) {
+      if (ending.length >= cut - 1 && ending.length <= cut + 1) {
+        const candidate = stem + ending;
+        // Only accept if Levenshtein distance to original is ≤ 2
+        if (levenshtein(word, candidate) <= 2) {
+          return candidate;
+        }
+      }
+    }
+  }
+  return word;
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[m][n];
 }
 
 // Fix missing umlauts in German translations (OCR often drops the dots)
@@ -667,27 +804,29 @@ async function correctCardsWithOllama(cards, onProgress) {
       `${i + 1}. ${c.front} | ${c.back}`
     ).join('\n');
 
-    const prompt = `Du korrigierst NUR OCR-Zeichenfehler in lateinischen Vokabelkarten.
+    const prompt = `Du korrigierst OCR-Fehler in lateinischen Vokabelkarten. Du verstehst lateinische Grammatik und erkennst falsche Wortformen im Kontext.
+
+EINTRAGSTYPEN:
+- Nomen: "nominativ, genitiv [m/f/n]" → z.B. "iudicium, iudicii n"
+- Verb: "infinitiv, 1.Person, perfekt, supinum" → z.B. "ducere, duco, duxi, ductum"
+- Adjektiv: "m, f, n; Gen. form" → z.B. "facilis, facilis, facile; Gen. facilis"
 
 REGELN:
-- Korrigiere NUR falsch erkannte Zeichen (z.B. l/I/1, o/0, n/ri, rn/m, d/cl, u/a, e/c)
-- Die Stammformen (Infinitiv, 1.Sg.Präs., Perfekt, Supinum) sind korrekt – NICHT inhaltlich ändern!
-- Ändere NICHT die Anzahl, Reihenfolge oder Struktur der Stammformen
-- Füge KEINE fehlenden Formen hinzu und entferne KEINE vorhandenen Formen
-- Wenn ein Eintrag korrekt aussieht, lass ihn UNVERÄNDERT
-- Korrigiere auch deutsche Übersetzungen nur bei offensichtlichen OCR-Fehlern
-
-Beispiele für korrekte OCR-Korrekturen:
-- "pond, posui, positum" → "pono, posui, positum" (o→n erkannt)
-- "iadicare" → "iudicare" (a→u erkannt)
-- "consuItum" → "consultum" (I→l erkannt)
-
-Beispiele für FALSCHE Korrekturen (NICHT machen!):
-- "sentire, sentio, sensi" → "sentire, sensi, sensum" ← FALSCH: Formen verändert
-- Stammformen ergänzen, verdoppeln oder umordnen ← FALSCH
+1. Prüfe ob jede Wortform grammatisch zum Eintragstyp passt:
+   - Genitiv eines Nomens muss eine gültige Genitiv-Endung haben (-ae, -i, -is, -us, -ei)
+   - 1. Person Präsens endet auf -o oder -or
+   - Perfekt endet auf -i, -vi, -ui, -si, -xi
+   - Supinum endet auf -um, -tum, -sum
+2. Korrigiere OCR-Zeichenfehler (d↔o, l↔I↔1, rn↔m, u↔a, &→e, fehlende Buchstaben)
+3. Korrigiere falsche Wortformen die zwar existieren aber nicht zur Position passen
+   - "iudicit" als Genitiv → "iudicii" (iudicit ist Verb, aber hier wird Genitiv erwartet)
+   - "dco" als 1. Person → "duco" (fehlender Buchstabe)
+4. Ändere NICHT Anzahl, Reihenfolge oder Struktur der Formen
+5. Wenn ein Eintrag korrekt ist, lass ihn UNVERÄNDERT
+6. Korrigiere deutsche Übersetzungen bei fehlenden Umlauten (Konig→König)
 
 Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
-Gleiche Reihenfolge und Anzahl.
+Gleiche Reihenfolge und Anzahl wie die Eingabe.
 
 ${cardList}`;
 
