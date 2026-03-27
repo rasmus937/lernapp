@@ -1,9 +1,11 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
+let currentFolderId = null; // current folder in library view (null = root)
+let editingFolderId = null; // folder being edited
 let editingCardId = null;
 let confirmCallback = null;
 let _appPin = null; // PIN in memory for encrypting new API keys
@@ -159,6 +161,12 @@ async function initApp() {
   // Dashboard
   document.getElementById('btn-start-learn').addEventListener('click', startGlobalLearn);
 
+  // Folders
+  document.getElementById('btn-add-folder').addEventListener('click', () => openFolderModal());
+  document.getElementById('btn-add-folder-empty').addEventListener('click', () => openFolderModal());
+  document.getElementById('folder-form').addEventListener('submit', saveFolder);
+  document.getElementById('btn-cancel-folder').addEventListener('click', closeFolderModal);
+
   // Decks
   document.getElementById('btn-add-deck').addEventListener('click', () => openDeckModal());
   document.getElementById('btn-add-deck-empty').addEventListener('click', () => openDeckModal());
@@ -268,7 +276,10 @@ async function initApp() {
     const action = el.dataset.action;
     const id = el.dataset.id;
     switch (action) {
+      case 'open-folder': currentFolderId = id || null; refreshDeckList(); break;
       case 'open-deck': openDeckDetail(id); break;
+      case 'edit-folder': e.stopPropagation(); openFolderModal(id); break;
+      case 'delete-folder': e.stopPropagation(); confirmDeleteFolder(id); break;
       case 'edit-card': openCardEditor(id); break;
       case 'delete-card': e.stopPropagation(); confirmDeleteCard(id); break;
       case 'remove-scan-card': removeScanCard(parseInt(el.dataset.index)); break;
@@ -444,21 +455,63 @@ async function refreshDashboard() {
   container.innerHTML = html;
 }
 
-// === Deck List ===
+// === Deck List (with folder hierarchy) ===
 
 async function refreshDeckList() {
-  const decks = await getAllDecks();
   const container = document.getElementById('deck-list');
   const empty = document.getElementById('deck-empty');
 
-  if (decks.length === 0) {
+  // Render breadcrumb
+  await renderBreadcrumb();
+
+  // Get folders and decks for current level
+  const folders = await getFoldersByParent(currentFolderId);
+  const decks = await getDecksByFolder(currentFolderId);
+
+  // Check nesting depth (max 2 levels: Ordner → Unterordner)
+  const isSubfolder = currentFolderId !== null;
+  let nestingDepth = 0;
+  if (currentFolderId) {
+    const folder = await getFolder(currentFolderId);
+    nestingDepth = folder?.parentId ? 2 : 1;
+  }
+  const canCreateSubfolder = nestingDepth < 2;
+
+  // Show/hide add-folder button based on nesting
+  document.getElementById('btn-add-folder').style.display = canCreateSubfolder ? '' : 'none';
+
+  if (folders.length === 0 && decks.length === 0) {
     container.innerHTML = '';
     empty.classList.remove('hidden');
+    document.getElementById('btn-add-folder-empty').style.display = canCreateSubfolder ? '' : 'none';
     return;
   }
 
   empty.classList.add('hidden');
   let html = '';
+
+  // Render folders first
+  for (const folder of folders.sort((a, b) => a.name.localeCompare(b.name))) {
+    const subfolders = await getFoldersByParent(folder.id);
+    const folderDecks = await getDecksByFolder(folder.id);
+    const itemCount = subfolders.length + folderDecks.length;
+
+    html += `
+      <div class="deck-item" data-action="open-folder" data-id="${escapeHtml(folder.id)}">
+        <div class="deck-icon">📁</div>
+        <div class="deck-info">
+          <div class="deck-name">${escapeHtml(folder.name)}</div>
+          <div class="deck-meta">${itemCount} ${itemCount === 1 ? 'Element' : 'Elemente'}</div>
+        </div>
+        <div class="flex gap-4">
+          <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px" data-action="edit-folder" data-id="${escapeHtml(folder.id)}">✏️</button>
+          <button class="btn btn-danger" style="padding:4px 8px; font-size:11px" data-action="delete-folder" data-id="${escapeHtml(folder.id)}">🗑</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Render decks
   for (const deck of decks) {
     const stats = await getDeckStats(deck.id);
     const icon = getDeckIcon(deck.type);
@@ -477,6 +530,35 @@ async function refreshDeckList() {
   container.innerHTML = html;
 }
 
+async function renderBreadcrumb() {
+  const bc = document.getElementById('folder-breadcrumb');
+  if (!currentFolderId) {
+    bc.innerHTML = '';
+    return;
+  }
+
+  // Build path from current folder to root
+  const path = [];
+  let fId = currentFolderId;
+  while (fId) {
+    const folder = await getFolder(fId);
+    if (!folder) break;
+    path.unshift(folder);
+    fId = folder.parentId || null;
+  }
+
+  let html = `<span data-action="open-folder" data-id="" style="cursor:pointer; color:var(--accent)">📚 Bibliothek</span>`;
+  for (const folder of path) {
+    html += ` <span style="color:var(--text-dim)">›</span> `;
+    if (folder.id === currentFolderId) {
+      html += `<span style="font-weight:600">${escapeHtml(folder.name)}</span>`;
+    } else {
+      html += `<span data-action="open-folder" data-id="${escapeHtml(folder.id)}" style="cursor:pointer; color:var(--accent)">${escapeHtml(folder.name)}</span>`;
+    }
+  }
+  bc.innerHTML = html;
+}
+
 function getDeckIcon(type) {
   switch (type) {
     case 'vocab': return '🗣️';
@@ -484,6 +566,59 @@ function getDeckIcon(type) {
     case 'process': return '🔄';
     default: return '📚';
   }
+}
+
+// === Folder Modal ===
+
+async function openFolderModal(folderId = null) {
+  editingFolderId = folderId;
+  const modal = document.getElementById('modal-folder');
+  const title = document.getElementById('modal-folder-title');
+
+  if (folderId) {
+    const folder = await getFolder(folderId);
+    title.textContent = 'Ordner umbenennen';
+    document.getElementById('folder-name').value = folder.name;
+  } else {
+    title.textContent = currentFolderId ? 'Neuer Unterordner' : 'Neuer Ordner';
+    document.getElementById('folder-form').reset();
+  }
+
+  modal.classList.add('active');
+}
+
+function closeFolderModal() {
+  document.getElementById('modal-folder').classList.remove('active');
+  editingFolderId = null;
+}
+
+async function saveFolder(e) {
+  e.preventDefault();
+  const name = document.getElementById('folder-name').value.trim();
+  if (!name) return;
+
+  if (editingFolderId) {
+    await updateFolder(editingFolderId, { name });
+  } else {
+    await createFolder({ name, parentId: currentFolderId });
+  }
+
+  closeFolderModal();
+  refreshDeckList();
+}
+
+async function confirmDeleteFolder(folderId) {
+  const folder = await getFolder(folderId);
+  if (!folder) return;
+  showConfirm(
+    'Ordner löschen',
+    `"${folder.name}" löschen? Enthaltene Decks werden in den übergeordneten Ordner verschoben.`,
+    async () => {
+      await deleteFolder(folderId);
+      closeConfirm();
+      refreshDeckList();
+    }
+  );
 }
 
 // === Deck Modal ===
@@ -495,15 +630,33 @@ async function openDeckModal(deckId = null) {
   const modal = document.getElementById('modal-deck');
   const title = document.getElementById('modal-deck-title');
 
+  // Populate folder selector
+  const folderSelect = document.getElementById('deck-folder');
+  const allFolders = await getAllFolders();
+  let folderOptions = '<option value="">— Kein Ordner (Bibliothek) —</option>';
+  // Top-level folders
+  const topFolders = allFolders.filter(f => !f.parentId).sort((a, b) => a.name.localeCompare(b.name));
+  for (const f of topFolders) {
+    folderOptions += `<option value="${escapeHtml(f.id)}">📁 ${escapeHtml(f.name)}</option>`;
+    // Subfolders
+    const subs = allFolders.filter(s => s.parentId === f.id).sort((a, b) => a.name.localeCompare(b.name));
+    for (const s of subs) {
+      folderOptions += `<option value="${escapeHtml(s.id)}">&nbsp;&nbsp;📂 ${escapeHtml(s.name)}</option>`;
+    }
+  }
+  folderSelect.innerHTML = folderOptions;
+
   if (deckId) {
     const deck = await getDeck(deckId);
     title.textContent = 'Deck bearbeiten';
     document.getElementById('deck-name').value = deck.name;
     document.getElementById('deck-type').value = deck.type;
     document.getElementById('deck-tags').value = (deck.tags || []).join(', ');
+    folderSelect.value = deck.folderId || '';
   } else {
     title.textContent = 'Neues Deck';
     document.getElementById('deck-form').reset();
+    folderSelect.value = currentFolderId || '';
   }
 
   modal.classList.add('active');
@@ -518,15 +671,16 @@ async function saveDeck(e) {
   e.preventDefault();
   const name = document.getElementById('deck-name').value.trim();
   const type = document.getElementById('deck-type').value;
+  const folderId = document.getElementById('deck-folder').value || null;
   const tags = document.getElementById('deck-tags').value
     .split(',').map(t => t.trim()).filter(t => t);
 
   if (!name) return;
 
   if (editingDeckId) {
-    await updateDeck(editingDeckId, { name, type, tags });
+    await updateDeck(editingDeckId, { name, type, tags, folderId });
   } else {
-    const deck = await createDeck({ name, type, tags });
+    const deck = await createDeck({ name, type, tags, folderId });
     currentDeckId = deck.id;
   }
 
@@ -1149,13 +1303,14 @@ async function runAIGenerate() {
   const preview = document.getElementById('ai-preview');
   const btn = document.getElementById('btn-ai-run');
 
+  const cardType = document.getElementById('ai-card-type').value;
+
   status.classList.remove('hidden');
-  status.innerHTML = 'Generiere Karten...';
+  status.innerHTML = 'Generiere Karten... <span class="text-dim">(kann 30-60s dauern)</span>';
   btn.disabled = true;
 
   try {
-    const deck = await getDeck(currentDeckId);
-    const cards = await generateCardsFromTopic(topic, deck?.type || 'mixed');
+    const cards = await generateCardsFromTopic(topic, cardType);
 
     if (cards.length === 0) {
       status.innerHTML = '<span style="color:var(--warning)">Keine Karten generiert. Versuche ein anderes Thema.</span>';

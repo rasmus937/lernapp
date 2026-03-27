@@ -113,7 +113,7 @@ async function aiChat(messages, options = {}) {
       body: JSON.stringify({
         model,
         stream: false,
-        think: true,
+        think: options.think !== undefined ? options.think : false,
         messages,
         options: options.ollamaOptions || undefined
       })

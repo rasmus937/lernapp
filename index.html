@@ -84,17 +84,24 @@
         </div>
       </section>
 
-      <!-- Decks View -->
+      <!-- Decks View (Bibliothek mit Ordner-Hierarchie) -->
       <section id="view-decks" class="view">
-        <div class="flex-between mb-16">
+        <div class="flex-between mb-8">
           <h2 style="font-size:18px; font-weight:700;">Bibliothek</h2>
-          <button class="btn btn-primary" id="btn-add-deck">+ Neues Deck</button>
+          <div class="flex gap-8">
+            <button class="btn btn-secondary" id="btn-add-folder">+ Ordner</button>
+            <button class="btn btn-primary" id="btn-add-deck">+ Neues Deck</button>
+          </div>
         </div>
+        <div id="folder-breadcrumb" class="mb-8" style="font-size:13px;"></div>
         <div id="deck-list"></div>
         <div id="deck-empty" class="empty-state hidden">
           <div class="empty-icon">📚</div>
-          <p>Noch keine Decks vorhanden</p>
-          <button class="btn btn-primary" id="btn-add-deck-empty">Erstes Deck erstellen</button>
+          <p>Dieser Ordner ist leer</p>
+          <div class="flex gap-8" style="justify-content:center">
+            <button class="btn btn-secondary" id="btn-add-folder-empty">Unterordner erstellen</button>
+            <button class="btn btn-primary" id="btn-add-deck-empty">Deck erstellen</button>
+          </div>
         </div>
       </section>
 
@@ -134,6 +141,15 @@
             <div class="form-group mt-8">
               <label>Thema</label>
               <input type="text" class="form-input" id="ai-topic" placeholder="z.B. Calvin-Zyklus, Irregular Verbs, Zellbiologie...">
+            </div>
+            <div class="form-group mt-8">
+              <label>Kartentyp</label>
+              <select class="form-select" id="ai-card-type">
+                <option value="mixed">Gemischt (automatisch)</option>
+                <option value="vocab">Vokabeln</option>
+                <option value="terms">Fachbegriffe</option>
+                <option value="process">Prozesse / Abläufe</option>
+              </select>
             </div>
             <div class="flex gap-8">
               <button class="btn btn-secondary" id="btn-ai-cancel" style="flex:1">Abbrechen</button>
@@ -511,11 +527,32 @@
             </select>
           </div>
           <div class="form-group">
+            <label>Ordner</label>
+            <select class="form-select" id="deck-folder"></select>
+          </div>
+          <div class="form-group">
             <label>Tags (kommagetrennt)</label>
             <input type="text" class="form-input" id="deck-tags" placeholder="z.B. englisch, schule">
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" id="btn-cancel-deck">Abbrechen</button>
+            <button type="submit" class="btn btn-primary">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Folder Modal -->
+    <div class="modal-overlay" id="modal-folder">
+      <div class="modal">
+        <div class="modal-title" id="modal-folder-title">Neuer Ordner</div>
+        <form id="folder-form">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" class="form-input" id="folder-name" placeholder="z.B. Schule, Uni, Sprachen..." required>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-folder">Abbrechen</button>
             <button type="submit" class="btn btn-primary">Speichern</button>
           </div>
         </form>

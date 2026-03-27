@@ -1,7 +1,7 @@
 // === IndexedDB Module ===
 
 const DB_NAME = 'lernapp';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _db = null;
 
@@ -46,6 +46,20 @@ function openDB() {
       // Settings store
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      // v2: Folders store (Ordner → Unterordner hierarchy)
+      if (!db.objectStoreNames.contains('folders')) {
+        const folders = db.createObjectStore('folders', { keyPath: 'id' });
+        folders.createIndex('parentId', 'parentId', { unique: false });
+      }
+
+      // v2: Add folderId index to decks (if upgrading from v1)
+      if (e.oldVersion < 2) {
+        const deckStore = e.target.transaction.objectStore('decks');
+        if (!deckStore.indexNames.contains('folderId')) {
+          deckStore.createIndex('folderId', 'folderId', { unique: false });
+        }
       }
     };
     req.onsuccess = e => {
@@ -129,14 +143,67 @@ function uuid() {
   });
 }
 
+// === Folder Operations ===
+
+async function createFolder({ name, parentId = null }) {
+  const folder = {
+    id: uuid(),
+    name,
+    parentId,
+    created: Date.now()
+  };
+  return dbPut('folders', folder);
+}
+
+async function updateFolder(id, updates) {
+  const folder = await dbGet('folders', id);
+  if (!folder) throw new Error('Folder not found');
+  Object.assign(folder, updates);
+  return dbPut('folders', folder);
+}
+
+async function deleteFolder(id) {
+  // Delete all subfolders recursively
+  const subfolders = await getFoldersByParent(id);
+  for (const sub of subfolders) {
+    await deleteFolder(sub.id);
+  }
+  // Move decks in this folder to parent (null = root)
+  const decks = await getDecksByFolder(id);
+  const folder = await dbGet('folders', id);
+  for (const deck of decks) {
+    await updateDeck(deck.id, { folderId: folder?.parentId || null });
+  }
+  return dbDelete('folders', id);
+}
+
+async function getFolder(id) {
+  return dbGet('folders', id);
+}
+
+async function getAllFolders() {
+  return dbGetAll('folders');
+}
+
+async function getFoldersByParent(parentId) {
+  const all = await getAllFolders();
+  return all.filter(f => (f.parentId || null) === parentId);
+}
+
+async function getDecksByFolder(folderId) {
+  const allDecks = await getAllDecks();
+  return allDecks.filter(d => (d.folderId || null) === folderId);
+}
+
 // === Deck Operations ===
 
-async function createDeck({ name, type = 'mixed', tags = [] }) {
+async function createDeck({ name, type = 'mixed', tags = [], folderId = null }) {
   const deck = {
     id: uuid(),
     name,
     type,
     tags,
+    folderId,
     created: Date.now(),
     updated: Date.now()
   };
