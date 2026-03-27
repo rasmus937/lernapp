@@ -56,9 +56,12 @@ function preprocessImageForOCR(imageDataUrl) {
     const img = new Image();
     img.onload = () => {
       try {
-        // Step 1: Upscale if too small (Tesseract needs ~300 DPI)
+        // Step 1: Upscale for better character distinction (o vs d, etc.)
+        // Higher resolution gives Tesseract more pixels to distinguish similar glyphs
         let scale = 1;
-        if (img.width < 1500 && img.height < 1500) scale = 2;
+        const maxDim = Math.max(img.width, img.height);
+        if (maxDim < 1500) scale = 3;
+        else if (maxDim < 2500) scale = 2;
 
         const canvas = document.createElement('canvas');
         const w = img.width * scale;
@@ -322,6 +325,16 @@ const DE_STARTER_WORDS = [
   'zerstören','herrschen','gehorchen','kämpfen','siegen',
   'besiegen','erobern','fliehen','verfolgen','zurückkehren',
   'anreden','herantreten','hierher','wohin',
+  'beten','bieten','lesen','lieben','leben','loben','raten',
+  'retten','reiten','senden','sorgen','suchen','teilen','tragen',
+  'wagen','warten','wecken','weinen','werben','wirken','wohnen',
+  'zahlen','zeigen','zwingen','dienen','danken','denken','dulden',
+  'fordern','fragen','handeln','helfen','hoffen','kaufen',
+  'klagen','lernen','leiden','lohnen','nutzen','opfern','pflegen',
+  'planen','preisen','rechnen','regieren','sammeln','schaffen',
+  'schenken','schicken','schreiben','schulden','spielen',
+  'sterben','strafen','streiten','tauschen','urteilen','verbinden',
+  'verlassen','versprechen','wachsen','wandern','warnen','widmen',
   // Additional starters
   'alle','alles','kein','keine','viel','viele','wenig','wenige',
   'mehr','selbst','nur','so','wie','wo','weg','teil',
