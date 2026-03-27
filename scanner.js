@@ -780,11 +780,10 @@ async function correctCardsWithOllama(cards, onProgress) {
 Vorderseite (Latein): ${card.front}
 Rückseite (Deutsch): ${card.back}
 
-Regeln:
-- Latein vorne, Deutsch hinten. Falls vertauscht, tausche die Seiten.
-- Lateinische Nomen: Nominativ, Genitiv, Genus (z.B. iudicium, iudicii n). Prüfe ob die zweite Form der korrekte Genitiv ist.
-- Lateinische Verben: Infinitiv, 1.Sg.Präs, 1.Sg.Perf, Supinum (z.B. ducere, duco, duxi, ductum).
-- Typische OCR-Fehler: d statt o, fehlendes u, falsche Endungen. Korrigiere nur wenn eindeutig falsch.
+OCR verwechselt häufig die Buchstaben d und o. Prüfe JEDE lateinische Wortform:
+- Ist jedes Wort ein existierendes lateinisches Wort? Wenn nicht, prüfe ob ein d↔o Tausch ein gültiges Wort ergibt.
+- Nomen haben das Format: Nominativ, Genitiv, Genus. Ist die zweite Form der korrekte Genitiv?
+- Verben haben das Format: Infinitiv, 1.Sg.Präs, 1.Sg.Perf, Supinum. Passen alle Formen zum selben Verb?
 - Deutsche Seite: Fehlende Umlaute (ä,ö,ü) ergänzen.
 - Ändere so wenig wie möglich. Keine Formatierung, keine Sternchen, kein Markdown.
 
