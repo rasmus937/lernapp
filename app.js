@@ -680,7 +680,7 @@ function addProcessStep() {
   div.innerHTML = `
     <span class="step-number">${idx}</span>
     <input type="text" class="form-input" placeholder="Schritt ${idx}" data-step>
-    <button type="button" class="btn btn-secondary" style="padding:8px 12px" onclick="this.parentElement.remove(); renumberSteps()">✕</button>
+    <button type="button" class="btn btn-secondary" style="padding:8px 12px" data-action="remove-step">✕</button>
   `;
   container.appendChild(div);
 }
@@ -701,7 +701,7 @@ function renderProcessSteps(steps) {
     div.innerHTML = `
       <span class="step-number">${i + 1}</span>
       <input type="text" class="form-input" placeholder="Schritt ${i + 1}" data-step value="${escapeHtml(text)}">
-      <button type="button" class="btn btn-secondary" style="padding:8px 12px" onclick="this.parentElement.remove(); renumberSteps()">✕</button>
+      <button type="button" class="btn btn-secondary" style="padding:8px 12px" data-action="remove-step">✕</button>
     `;
     container.appendChild(div);
   });
@@ -866,7 +866,7 @@ async function rateAndNext(quality) {
   showNextCard();
 }
 
-// === Event delegation for learn interactions (CSP-safe, no inline onclick) ===
+// === Event delegation for all interactions (CSP-safe, no inline onclick) ===
 
 document.addEventListener('click', (e) => {
   const target = e.target.closest('[data-action]');
@@ -886,6 +886,13 @@ document.addEventListener('click', (e) => {
     checkSortOrder();
   } else if (action === 'check-cloze') {
     checkClozeAnswer(target.dataset.answer);
+  } else if (action === 'remove-step') {
+    target.parentElement.remove();
+    renumberSteps();
+  } else if (action === 'remove-ai-card') {
+    target.closest('.card').remove();
+  } else if (action === 'save-ai-cards') {
+    saveAICards();
   }
 });
 
@@ -944,8 +951,8 @@ function checkTypeAnswer(correct) {
         <div class="mt-8">Richtige Antwort: <strong>${escapeHtml(correct)}</strong></div>
       </div>
       <div class="rating-buttons mt-16">
-        <button class="rating-btn again" onclick="rateAndNext(0)">Nochmal</button>
-        <button class="rating-btn hard" onclick="rateAndNext(3)">Wusste ich fast</button>
+        <button class="rating-btn again" data-action="rate" data-quality="0">Nochmal</button>
+        <button class="rating-btn hard" data-action="rate" data-quality="3">Wusste ich fast</button>
       </div>
     `;
   }
@@ -1057,8 +1064,8 @@ function checkSortOrder() {
         <div class="text-dim text-sm mt-8">Rot markierte Schritte sind an der falschen Position.</div>
       </div>
       <div class="rating-buttons mt-16">
-        <button class="rating-btn again" onclick="rateAndNext(0)">Nochmal</button>
-        <button class="rating-btn hard" onclick="rateAndNext(3)">Fast richtig</button>
+        <button class="rating-btn again" data-action="rate" data-quality="0">Nochmal</button>
+        <button class="rating-btn hard" data-action="rate" data-quality="3">Fast richtig</button>
       </div>
     `;
   }
@@ -1095,8 +1102,8 @@ function checkClozeAnswer(correct) {
         <div class="text-dim text-sm mt-8">Deine Antwort: ${escapeHtml(answer) || '(leer)'}</div>
       </div>
       <div class="rating-buttons mt-16">
-        <button class="rating-btn again" onclick="rateAndNext(0)">Nochmal</button>
-        <button class="rating-btn hard" onclick="rateAndNext(3)">Wusste ich fast</button>
+        <button class="rating-btn again" data-action="rate" data-quality="0">Nochmal</button>
+        <button class="rating-btn hard" data-action="rate" data-quality="3">Wusste ich fast</button>
       </div>
     `;
   }
@@ -1163,14 +1170,14 @@ async function runAIGenerate() {
         <div class="flex-between">
           <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
           <button class="btn btn-secondary" style="padding:2px 8px; font-size:11px"
-                  onclick="this.closest('.card').remove()">✕</button>
+                  data-action="remove-ai-card">✕</button>
         </div>
         <div class="mt-8" style="font-weight:600">${escapeHtml(card.front)}</div>
         ${card.steps ? `<div class="text-sm text-dim mt-4">${card.steps.map((s,i) => `${i+1}. ${escapeHtml(s)}`).join('<br>')}</div>` : ''}
         ${card.back ? `<div class="text-sm text-dim mt-4">${escapeHtml(card.back)}</div>` : ''}
       </div>
     `).join('') + `
-      <button class="btn btn-success btn-full mt-8" onclick="saveAICards()">Alle Karten speichern</button>
+      <button class="btn btn-success btn-full mt-8" data-action="save-ai-cards">Alle Karten speichern</button>
     `;
 
     // Store for saving
