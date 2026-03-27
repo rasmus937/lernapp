@@ -185,7 +185,7 @@ async function runOCR(imageSource, progressCallback, statusCallback) {
 
   // Step 3: Create worker with optimized parameters
   if (statusCallback) statusCallback('Starte OCR-Engine...');
-  const worker = await Tess.createWorker('deu+eng', 1, {
+  const worker = await Tess.createWorker('lat+deu+eng', 1, {
     logger: m => {
       if (m.status === 'loading language traineddata') {
         if (statusCallback) statusCallback('Lade Sprachdaten...');

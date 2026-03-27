@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lernapp-v36';
+const CACHE_NAME = 'lernapp-v37';
 const ASSETS = [
   './',
   './index.html',
@@ -10,7 +10,6 @@ const ASSETS = [
   './gamification.js',
   './scanner.js',
   './ollama.js',
-  './latin-dict.js',
   './import-export.js'
 ];
 

@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -1404,8 +1404,6 @@ async function processScannedImage(imageSource) {
     scanParsedCards = parseOCRText(text);
     showScanPreview();
 
-    // Then try Ollama correction in background (if connected)
-    tryDictionaryCorrection();
   } catch (err) {
     showToast('OCR fehlgeschlagen: ' + (err?.message || String(err) || 'Unbekannter Fehler'));
     resetScanner();
@@ -1467,32 +1465,6 @@ function removeScanCard(index) {
   showScanPreview();
 }
 
-// Dictionary-based OCR correction for scanned cards (instant, no AI needed)
-function tryDictionaryCorrection() {
-  if (scanParsedCards.length === 0 || typeof correctWithDictionary !== 'function') return;
-
-  const countEl = document.getElementById('scan-count');
-  const result = correctWithDictionary(scanParsedCards);
-
-  const correctedCards = result.corrected;
-  const unmatched = result.unmatched;
-  const changes = scanParsedCards.filter((c, i) => c.front !== correctedCards[i].front).length;
-
-  if (changes > 0) {
-    scanParsedCards = correctedCards;
-    showScanPreview();
-    countEl.textContent = `${scanParsedCards.length} Karten (${changes} korrigiert)`;
-  }
-
-  // Notify about unmatched words
-  if (unmatched.length > 0) {
-    const unique = [...new Set(unmatched)];
-    const display = unique.slice(0, 10).join(', ');
-    const more = unique.length > 10 ? ` (+${unique.length - 10} weitere)` : '';
-    showToast(`${unique.length} Wörter nicht im Wörterbuch: ${display}${more}`, 5000);
-  }
-}
-
 function toggleScanRaw() {
   document.getElementById('scan-raw-text').classList.toggle('hidden');
 }
@@ -1502,7 +1474,6 @@ function reparseScannedText() {
   scanParsedCards = parseOCRText(scanRawText);
   document.getElementById('scan-raw-text').classList.add('hidden');
   showScanPreview();
-  tryDictionaryCorrection();
 }
 
 async function saveScanCards() {
