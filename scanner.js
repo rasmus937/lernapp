@@ -344,6 +344,25 @@ const DE_STARTER_WORDS = [
   'festsetzen','leugnen','ablehnen','schleppen','pflegen','verehren',
   'bebauen','erfahren','aushalten','ertragen',
   'retten','bewahren','schicken','werfen',
+  // German nouns (capitalized) commonly found in translations
+  'Gesellschaft','Kontrolle','Freiheit','Hoffnung','Widerstand',
+  'Aufstand','Vertrauen','Verrat','Opfer','Angst','Armut',
+  'Gewalt','Macht','Recht','Pflicht','Schuld','Ehre','Ruhm',
+  'Freundschaft','Feindschaft','Gleichheit','Ungleichheit',
+  'Menschlichkeit','Gerechtigkeit','Ungerechtigkeit',
+  // More German verbs/adjectives for translations
+  'darstellen','symbolisieren','trotzen','widersetzen',
+  'melden','interpretieren','bedeuten','zeigen','legen',
+  'beziehen','assoziieren',
+  'echt','echte','echten','echtes','echtem','echten',
+  'sozial','zweideutig','unkontrollierbar',
+  'dystopisch','totalitär',
+  // Conjugated verbs common in phrase translations
+  'steht','wird','kann','legt','zeigt','bezieht',
+  'ist','hat','geht','kommt','heißt','bleibt','macht',
+  // Words in common German phrases
+  'nahe','darüber','hinaus','gegensatz','beispiel',
+  'freiwillig','interpretiert','symbolisiert',
 ];
 const DE_STARTERS = new RegExp('\\b(' + DE_STARTER_WORDS.join('|') + ')\\b', 'i');
 
@@ -456,12 +475,32 @@ function heuristicSplitVocab(text) {
     // Only trust umlauts as German signal if: word is capitalized (German noun) or contains ß
     const hasGermanChar = /[ß]/.test(w) || (/[äöüÄÖÜ]/.test(w) && /^[A-ZÄÖÜ]/.test(w));
 
-    // Word matches DE_STARTERS list or has reliable German characters
-    const isDeWord = hasGermanChar || DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
+    // German noun detection: capitalized word not at sentence start (strong signal for EN→DE boundary)
+    // Skip short words and common Latin/English abbreviations
+    const isGermanNoun = i > 0 && /^[A-ZÄÖÜ][a-zäöüß]{2,}/.test(w) &&
+      !/^(Gen|Dat|Abl|Akk|Nom|Imp|The|This|That|And|For|But|Not|His|Her|Its|Our|Per|Moreover|Furthermore|However|Nevertheless|Although|Whether|Because|Without|Within|Throughout|Between|Against|About|After|Before|During|Since|Until|While|Among|Beyond|Despite|Except|Instead|Rather|Together|Already|Perhaps|Indeed|Meanwhile|Therefore|Otherwise|Nonetheless|Consequently)$/i.test(w);
+
+    // Word matches DE_STARTERS list or has reliable German characters or is a German noun
+    const isDeWord = hasGermanChar || isGermanNoun || DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
 
     if (isDeWord) {
-      const front = words.slice(0, i).join(' ').replace(/[\s,;]+$/, '').trim();
-      const back = words.slice(i).join(' ').trim();
+      // If this is a capitalized German noun, check if the word before it is also German (lowercase)
+      // to find the true start of the German part
+      let splitIdx = i;
+      if (isGermanNoun && i > 1) {
+        for (let j = i - 1; j >= 1; j--) {
+          const prev = words[j];
+          // Check: DE_STARTERS, umlauts/ß, or German adjective endings (5+ chars ending in -ische, -sche, -ige, -liche, -ale, -are, -ene, -erte, -ose, -te)
+          const isGermanAdj = prev.length >= 4 && /(?:ische|sche|ige|liche|ale|are|ene|erte|ose|ierte)$/i.test(prev);
+          if (DE_STARTERS.test(prev) || /[äöüßÄÖÜ]/.test(prev) || isGermanAdj) {
+            splitIdx = j;
+          } else {
+            break;
+          }
+        }
+      }
+      const front = words.slice(0, splitIdx).join(' ').replace(/[\s,;]+$/, '').trim();
+      const back = words.slice(splitIdx).join(' ').trim();
       if (front.length > 0 && back.length > 0) {
         return { front, back, type: 'vocab' };
       }
@@ -487,11 +526,19 @@ function parseGenericList(lines) {
 
   const separators = [
     /^(.+?)\s*[-–—=:→]\s*(.+)$/,
+    /^(.+?)\.{2,}\s*(.+?)\.{0,}$/,   // ".." as separator (phrase lists)
     /^(.+?)\s{3,}(.+)$/,
     /^(.+?)\t+(.+)$/,
   ];
 
-  for (const line of lines) {
+  for (let line of lines) {
+    if (!line || line.length < 3) continue;
+
+    // Skip title/header lines (no vocabulary content)
+    if (/^[-–—=\s]*$/.test(line)) continue;
+    if (/\b(vocabulary|vokabel|list|klassenarbeit|film\s*\d|chapter|kapitel|unit|lektion)\b/i.test(line) &&
+        !/[äöüßÄÖÜ].*[äöüßÄÖÜ]/.test(line)) continue;
+
     let matched = false;
     for (const sep of separators) {
       const m = line.match(sep);
@@ -506,6 +553,15 @@ function parseGenericList(lines) {
       const numMatch = line.match(/^(\d+)[.)]\s*(.+)/);
       if (numMatch) {
         cards.push({ front: numMatch[2].trim(), back: '', type: '_step', stepNum: parseInt(numMatch[1]) });
+        matched = true;
+      }
+    }
+
+    // Try heuristic split (language boundary detection)
+    if (!matched) {
+      const hResult = heuristicSplitVocab(line);
+      if (hResult) {
+        cards.push(hResult);
         matched = true;
       }
     }

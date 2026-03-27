@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.10.3';
+const APP_VERSION = '1.11.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -414,9 +414,10 @@ async function refreshDashboard() {
       <div class="empty-state">
         <div class="empty-icon">📚</div>
         <p>Erstelle dein erstes Deck, um loszulegen</p>
-        <button class="btn btn-primary" onclick="navigateTo('decks')">Deck erstellen</button>
+        <button class="btn btn-primary" id="btn-dash-create-deck">Deck erstellen</button>
       </div>
     `;
+    document.getElementById('btn-dash-create-deck').addEventListener('click', () => openDeckModal());
     return;
   }
 

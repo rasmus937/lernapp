@@ -8,7 +8,20 @@ console.log('Building APK...');
 console.log('SDK:', sdkPath);
 
 const javaHome = 'C:\\Program Files\\Android\\Android Studio\\jbr';
-execSync(path.join(androidDir, 'gradlew.bat') + ' assembleDebug', {
+
+// Stop any running Gradle daemon first
+try {
+  execSync(path.join(androidDir, 'gradlew.bat') + ' --stop', {
+    cwd: androidDir, stdio: 'inherit',
+    env: { ...process.env, ANDROID_HOME: sdkPath, JAVA_HOME: javaHome }
+  });
+} catch (e) { /* ignore */ }
+
+// Clean corrupt cache
+const cacheDir = path.join(process.env.USERPROFILE, '.gradle', 'caches', '8.14.3', 'groovy-dsl');
+try { require('fs').rmSync(cacheDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+
+execSync(path.join(androidDir, 'gradlew.bat') + ' clean assembleDebug --no-daemon', {
   cwd: androidDir,
   stdio: 'inherit',
   env: { ...process.env, ANDROID_HOME: sdkPath, JAVA_HOME: javaHome }
