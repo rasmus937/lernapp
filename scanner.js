@@ -554,7 +554,7 @@ function cleanParsedCards(cards) {
   return cards.map(card => ({
     ...card,
     front: isLatin ? cleanLatinText(cleanCardText(card.front)) : cleanCardText(card.front),
-    back: cleanCardText(card.back || ''),
+    back: isLatin ? autoCorrectGermanOCR(cleanCardText(card.back || '')) : cleanCardText(card.back || ''),
     steps: card.steps ? card.steps.map(cleanCardText) : card.steps
   })).filter(c => c.front.length > 1);
 }
@@ -566,7 +566,76 @@ function cleanLatinText(text) {
     .replace(/ö/g, 'o').replace(/Ö/g, 'O')
     .replace(/ü/g, 'u').replace(/Ü/g, 'U')
     .replace(/ä/g, 'a').replace(/Ä/g, 'A')
-    .replace(/ß/g, 'ss');
+    .replace(/ß/g, 'ss')
+    .replace(/&/g, 'e')
+    .replace(/\b[A-Z](?=[a-z]{2,})/g, m => m.toLowerCase())
+    .split(/(\s+|[,;:()\-–]+)/).map(part =>
+      /^[a-z]{3,}$/.test(part) ? autoCorrectLatinOCR(part) : part
+    ).join('');
+}
+
+// Rule-based OCR autocorrect for Latin words
+// Only fixes high-confidence patterns (known Tesseract confusions)
+function autoCorrectLatinOCR(word) {
+  // Latin words that legitimately end in 'd'
+  const LATIN_D_ENDINGS = new Set([
+    'ad','sed','id','quid','quod','aliud','illud','istud','haud','apud',
+    'idem','eiusdem','eundem','eandem'
+  ]);
+
+  let w = word;
+
+  // Rule 1: Final 'd' → 'o' for words >4 chars
+  // Latin 1st person (-o) is extremely common; final -d is rare for longer words
+  if (w.length > 4 && w.endsWith('d') && !LATIN_D_ENDINGS.has(w)) {
+    w = w.slice(0, -1) + 'o';
+  }
+
+  // Rule 2: 'nd' → 'no' inside words where 'nd' is not part of valid Latin
+  // e.g. honds→honos, but keep: secundum, undecim, etc.
+  // Only apply when 'nd' is followed by a vowel-less ending (nds, ndt)
+  w = w.replace(/nd([^aeioua-z]|$)/g, (match, after) => {
+    // Keep 'nd' if followed by common Latin suffix patterns
+    if (/^(um|us|i|o|a|e|is|ibus)/.test(after + w.slice(w.indexOf(match) + match.length))) return match;
+    return 'no' + after;
+  });
+
+  // Rule 3: Final 'bt' → 'bi' (sibt → sibi)
+  if (w.endsWith('bt')) {
+    w = w.slice(0, -1) + 'i';
+  }
+
+  return w;
+}
+
+// Fix missing umlauts in German translations (OCR often drops the dots)
+const GERMAN_UMLAUT_FIXES = {
+  'Konig': 'König', 'Konigsherrschaft': 'Königsherrschaft', 'Konigreich': 'Königreich',
+  'konig': 'könig', 'koniglich': 'königlich',
+  'moglich': 'möglich', 'notig': 'nötig', 'offentlich': 'öffentlich',
+  'plotzlich': 'plötzlich', 'gewohnlich': 'gewöhnlich', 'personlich': 'persönlich',
+  'unmoglich': 'unmöglich', 'vollig': 'völlig', 'hoflich': 'höflich',
+  'feindlich': 'feindlich', 'frohlich': 'fröhlich', 'gottlich': 'göttlich',
+  'Gotter': 'Götter', 'Volker': 'Völker', 'Worter': 'Wörter',
+  'ubel': 'übel', 'uber': 'über', 'Ubel': 'Übel',
+  'fur': 'für', 'Tur': 'Tür', 'zuruck': 'zurück',
+  'glucken': 'glücken', 'Gluck': 'Glück', 'Stuck': 'Stück',
+  'Bruder': 'Brüder', 'Mutter': 'Mütter', 'Vater': 'Väter',
+  'wahlen': 'wählen', 'erzahlen': 'erzählen', 'zahlen': 'zählen',
+  'gefahrlich': 'gefährlich', 'jahrlich': 'jährlich', 'ahnlich': 'ähnlich',
+  'machtig': 'mächtig', 'unganglich': 'ungänglich', 'umganglich': 'umgänglich',
+  'standig': 'ständig', 'vollstandig': 'vollständig',
+  'Romer': 'Römer', 'romisch': 'römisch',
+  'kampfen': 'kämpfen', 'Kampf': 'Kämpf',
+  'zerstoren': 'zerstören', 'horen': 'hören', 'gehoren': 'gehören',
+  'bose': 'böse', 'Grosse': 'Größe', 'grosse': 'größe',
+  'Fuhrer': 'Führer', 'fuhren': 'führen', 'ausfuhren': 'ausführen',
+};
+
+function autoCorrectGermanOCR(text) {
+  return text.split(/(\s+|[,;:()]+)/).map(part => {
+    return GERMAN_UMLAUT_FIXES[part] || part;
+  }).join('');
 }
 
 function cleanCardText(text) {
