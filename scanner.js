@@ -558,7 +558,58 @@ function cleanParsedCards(cards) {
     steps: card.steps ? card.steps.map(cleanCardText) : card.steps
   })).filter(c => c.front.length > 1);
 
+  // Apply grammar-based fixes for Latin vocab entries
+  if (isLatin) result = result.map(card => fixLatinGrammar(card));
+
   return result;
+}
+
+// Mechanical grammar-based correction for Latin vocab entries.
+// Uses the fixed structure of vocab entries (verb/noun/adjective patterns)
+// to detect and fix common OCR errors like d↔o.
+function fixLatinGrammar(card) {
+  const front = card.front;
+  const parts = front.split(/,\s*/);
+  if (parts.length < 2) return card;
+
+  const firstWord = parts[0].trim().split(/\s/)[0];
+
+  // VERB detection: first word ends in -re/-ere/-ire/-are
+  if (/(?:a|e|i|[^aeiou]e)re$/.test(firstWord) && parts.length >= 2) {
+    const fixedParts = [...parts];
+
+    // 2nd form = 1. Person Singular Präsens → MUST end in -o
+    const form2 = parts[1].trim();
+    if (form2.length >= 2 && form2.endsWith('d')) {
+      fixedParts[1] = parts[1].replace(/d$/, 'o');
+    }
+
+    const newFront = fixedParts.join(', ');
+    if (newFront !== front) return { ...card, front: newFront };
+  }
+
+  // NOUN detection: last part contains genus marker (m/f/n) at the end
+  if (parts.length >= 2) {
+    const lastPart = parts[parts.length - 1].trim();
+    const genusMatch = lastPart.match(/^(\S+)\s+([mfn])$/);
+    if (genusMatch && parts.length >= 2) {
+      // 2nd part = Genitiv. Check if ending matches the nominative's declension.
+      const nom = parts[0].trim();
+      const gen = parts.length === 3 ? parts[1].trim() : null;
+      if (gen && gen.length >= 2) {
+        // -um nominative → genitive should end in -i (not -it, -id etc.)
+        if (nom.endsWith('um') && gen.endsWith('t') && !gen.endsWith('is')) {
+          const fixedGen = gen.slice(0, -1) + 'i';
+          const fixedParts = [...parts];
+          fixedParts[1] = ' ' + fixedGen;
+          const newFront = fixedParts.join(',');
+          if (newFront !== front) return { ...card, front: newFront };
+        }
+      }
+    }
+  }
+
+  return card;
 }
 
 // Clean Latin text: strip umlauts/accents that are OCR artifacts
@@ -775,20 +826,27 @@ async function correctCardsWithOllama(cards, onProgress) {
     if (onProgress) onProgress(i + 1, total);
     const card = cards[i];
 
-    const prompt = `Lateinisch-Deutsche Vokabelkarte aus OCR-Scan. Prüfe und korrigiere OCR-Fehler.
+    const prompt = `Korrigiere OCR-Fehler in dieser lateinisch-deutschen Vokabelkarte.
 
 Vorderseite (Latein): ${card.front}
 Rückseite (Deutsch): ${card.back}
 
-OCR verwechselt häufig die Buchstaben d und o. Prüfe JEDE lateinische Wortform:
-- Ist jedes Wort ein existierendes lateinisches Wort? Wenn nicht, prüfe ob ein d↔o Tausch ein gültiges Wort ergibt.
-- Nomen haben das Format: Nominativ, Genitiv, Genus. Ist die zweite Form der korrekte Genitiv?
-- Verben haben das Format: Infinitiv, 1.Sg.Präs, 1.Sg.Perf, Supinum. Passen alle Formen zum selben Verb?
-- Deutsche Seite: Fehlende Umlaute (ä,ö,ü) ergänzen.
-- Ändere so wenig wie möglich. Keine Formatierung, keine Sternchen, kein Markdown.
+Wende diese Regeln mechanisch an:
 
-Antworte NUR mit reinem JSON: {"front":"...","back":"..."}
-Wenn alles korrekt ist, gib die Karte unverändert zurück.`;
+VERB-Einträge (erkennbar am Infinitiv auf -re): Die kommaseparierten Formen sind Infinitiv, 1.Sg.Präs, 1.Sg.Perf, Supinum.
+→ Die 2. Form (1.Sg.Präs) MUSS auf den Buchstaben "o" enden. Wenn sie auf "d" endet, ersetze das "d" durch "o".
+→ Jede Form muss ein vollständiges lateinisches Wort sein. Fehlt ein Buchstabe, ergänze ihn.
+
+NOMEN-Einträge (erkennbar an m/f/n am Ende): Die Formen sind Nominativ, Genitiv, Genus.
+→ Prüfe ob der Genitiv zur Deklination des Nominativs passt (z.B. -um→-i, -a→-ae, -us→-i, -is→-is).
+
+DEUTSCH: Fehlende Umlaute (ä,ö,ü) ergänzen. Sinnlose Buchstaben-Artefakte am Textende entfernen.
+
+VERBOTEN: Keine Makrons/Längenzeichen (ā,ē,ī,ō,ū). Keine Sternchen. Kein Markdown.
+
+Antworte NUR mit JSON: {"front":"...","back":"..."}`;
+
+
 
     try {
       const content = await aiChat([{ role: 'user', content: prompt }]);
