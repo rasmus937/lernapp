@@ -705,24 +705,27 @@ function correctVerbEntry(parts, original) {
 }
 
 // Try to fix a word ending by finding the closest valid Latin ending
-// Only changes 1-2 characters at the end (conservative)
+// Picks the candidate with the lowest Levenshtein distance (max 2)
 function tryFixEnding(word, validEndings) {
   if (word.length < 3) return word;
 
-  // Try replacing last 1-3 characters with valid endings
+  let best = word;
+  let bestDist = Infinity;
+
   for (let cut = 1; cut <= 3 && cut < word.length - 1; cut++) {
     const stem = word.slice(0, -cut);
     for (const ending of validEndings) {
       if (ending.length >= cut - 1 && ending.length <= cut + 1) {
         const candidate = stem + ending;
-        // Only accept if Levenshtein distance to original is ≤ 2
-        if (levenshtein(word, candidate) <= 2) {
-          return candidate;
+        const dist = levenshtein(word, candidate);
+        if (dist <= 2 && dist < bestDist) {
+          best = candidate;
+          bestDist = dist;
         }
       }
     }
   }
-  return word;
+  return best;
 }
 
 function levenshtein(a, b) {
