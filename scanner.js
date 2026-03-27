@@ -569,7 +569,7 @@ function cleanLatinText(text) {
     .replace(/ß/g, 'ss')
     .replace(/&/g, 'e')
     .replace(/\b[A-Z](?=[a-z]{2,})/g, m => m.toLowerCase())
-    .split(/(\s+|[,;:()\-–]+)/).map(part =>
+    .split(/(\s+|[,;:()\-–\/]+)/).map(part =>
       /^[a-z]{3,}$/.test(part) ? autoCorrectLatinOCR(part) : part
     ).join('');
 }
@@ -591,14 +591,9 @@ function autoCorrectLatinOCR(word) {
     w = w.slice(0, -1) + 'o';
   }
 
-  // Rule 2: 'nd' → 'no' inside words where 'nd' is not part of valid Latin
-  // e.g. honds→honos, but keep: secundum, undecim, etc.
-  // Only apply when 'nd' is followed by a vowel-less ending (nds, ndt)
-  w = w.replace(/nd([^aeioua-z]|$)/g, (match, after) => {
-    // Keep 'nd' if followed by common Latin suffix patterns
-    if (/^(um|us|i|o|a|e|is|ibus)/.test(after + w.slice(w.indexOf(match) + match.length))) return match;
-    return 'no' + after;
-  });
+  // Rule 2: 'nd' → 'no' when followed by consonant
+  // e.g. honds→honos, but keep: secundum (nd+vowel), undecim, etc.
+  w = w.replace(/nd(?=[bcdfghjklmnpqrstvwxyz])/g, 'no');
 
   // Rule 3: Final 'bt' → 'bi' (sibt → sibi)
   if (w.endsWith('bt')) {
@@ -633,7 +628,7 @@ const GERMAN_UMLAUT_FIXES = {
 };
 
 function autoCorrectGermanOCR(text) {
-  return text.split(/(\s+|[,;:()]+)/).map(part => {
+  return text.split(/(\s+|[,;:()\-–]+)/).map(part => {
     return GERMAN_UMLAUT_FIXES[part] || part;
   }).join('');
 }
