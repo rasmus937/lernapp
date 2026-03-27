@@ -255,8 +255,8 @@ function cleanOCRText(rawText) {
     // Normalize various dash types
     l = l.replace(/[‐‑‒―]/g, '-');
 
-    // Strip lesson/page references like "L 14", "L14", "L.14", "L 14-17", "Lektion 5"
-    l = l.replace(/\bL\.?\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?\b/g, '');
+    // Strip lesson/page references like "L 14", "L14", "L.14", "L 14-17", "L1i" (OCR noise after digit)
+    l = l.replace(/\bL\.?\s*\d{1,3}[a-zA-Z]{0,2}(?:\s*[-–]\s*\d{1,3})?\b/g, '');
     l = l.replace(/\bLektion\s*\d{1,3}\b/gi, '');
     l = l.replace(/\bKap\.?\s*\d{1,3}\b/gi, '');
     l = l.replace(/\bSeite\s*\d+\b/gi, '');
@@ -433,10 +433,11 @@ function heuristicSplitVocab(text) {
 
     if (i === 0) continue;
 
-    // Priority 1: Word contains umlaut/ß → definitely German
-    const hasGermanChar = /[äöüßÄÖÜ]/.test(w);
+    // Umlaut/ß detection – but umlauts in lowercase words are often OCR artifacts in Latin
+    // Only trust umlauts as German signal if: word is capitalized (German noun) or contains ß
+    const hasGermanChar = /[ß]/.test(w) || (/[äöüÄÖÜ]/.test(w) && /^[A-ZÄÖÜ]/.test(w));
 
-    // Priority 2: Word matches DE_STARTERS list
+    // Word matches DE_STARTERS list or has reliable German characters
     const isDeWord = hasGermanChar || DE_STARTERS.test(w) || /^\([a-zäöü]+\)[a-zäöü]/i.test(w);
 
     if (isDeWord) {
@@ -557,7 +558,7 @@ function cleanLatinText(text) {
 
 function cleanCardText(text) {
   return text
-    .replace(/\bL\.?\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?\b/g, '')
+    .replace(/\bL\.?\s*\d{1,3}[a-zA-Z]{0,2}(?:\s*[-–]\s*\d{1,3})?\b/g, '')
     .replace(/\bLektion\s*\d{1,3}\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[.,;:\s]+/, '')
