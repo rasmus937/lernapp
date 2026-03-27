@@ -578,29 +578,13 @@ function cleanLatinText(text) {
 
 // Rule-based OCR autocorrect for Latin words
 // Only fixes high-confidence patterns (known Tesseract confusions)
+// Conservative: only rules that can't produce false positives
 function autoCorrectLatinOCR(word) {
-  // Latin words that legitimately end in 'd'
-  const LATIN_D_ENDINGS = new Set([
-    'ad','sed','id','quid','quod','aliud','illud','istud','haud','apud',
-    'idem','eiusdem','eundem','eandem'
-  ]);
-
   let w = word;
 
-  // Rule 1: Final 'd' → 'o' for words >3 chars
-  // Latin 1st person (-o) is extremely common; final -d is rare for longer words
-  if (w.length > 3 && w.endsWith('d') && !LATIN_D_ENDINGS.has(w)) {
-    w = w.slice(0, -1) + 'o';
-  }
-
-  // Rule 2: 'nd' → 'no' when followed by consonant
-  // e.g. honds→honos, but keep: secundum (nd+vowel), undecim, etc.
-  w = w.replace(/nd(?=[bcdfghjklmnpqrstvwxyz])/g, 'no');
-
-  // Rule 3: Final 'bt' → 'bi' (sibt → sibi)
-  if (w.endsWith('bt')) {
-    w = w.slice(0, -1) + 'i';
-  }
+  // Rule 1: '&' inside words → 'e' (cr&do → credo)
+  // '&' is never valid inside Latin words, always an OCR artifact
+  w = w.replace(/&/g, 'e');
 
   return w;
 }
@@ -791,16 +775,20 @@ async function correctCardsWithOllama(cards, onProgress) {
     if (onProgress) onProgress(i + 1, total);
     const card = cards[i];
 
-    const prompt = `Vokabelkarte aus OCR-Scan. Prüfe und korrigiere mit minimalen Änderungen.
+    const prompt = `Lateinisch-Deutsche Vokabelkarte aus OCR-Scan. Prüfe und korrigiere OCR-Fehler.
 
 Vorderseite (Latein): ${card.front}
 Rückseite (Deutsch): ${card.back}
 
-1. Ist Latein/Deutsch richtig zugeordnet? Falls nicht, tausche die Seiten.
-2. Sind die lateinischen Wortformen korrekt? Korrigiere nur einzelne falsche Zeichen (OCR-Fehler wie d statt o, fehlende Buchstaben). Ändere so wenig wie möglich.
-3. Ist die deutsche Übersetzung korrekt geschrieben? Fehlende Umlaute ergänzen.
+Regeln:
+- Latein vorne, Deutsch hinten. Falls vertauscht, tausche die Seiten.
+- Lateinische Nomen: Nominativ, Genitiv, Genus (z.B. iudicium, iudicii n). Prüfe ob die zweite Form der korrekte Genitiv ist.
+- Lateinische Verben: Infinitiv, 1.Sg.Präs, 1.Sg.Perf, Supinum (z.B. ducere, duco, duxi, ductum).
+- Typische OCR-Fehler: d statt o, fehlendes u, falsche Endungen. Korrigiere nur wenn eindeutig falsch.
+- Deutsche Seite: Fehlende Umlaute (ä,ö,ü) ergänzen.
+- Ändere so wenig wie möglich. Keine Formatierung, keine Sternchen, kein Markdown.
 
-Antworte NUR mit JSON: {"front":"...","back":"..."}
+Antworte NUR mit reinem JSON: {"front":"...","back":"..."}
 Wenn alles korrekt ist, gib die Karte unverändert zurück.`;
 
     try {
@@ -824,7 +812,9 @@ Wenn alles korrekt ist, gib die Karte unverändert zurück.`;
       const newBack = (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : null;
 
       if (newFront && newBack) {
-        result[i] = { ...result[i], front: newFront, back: newBack };
+        // Strip any Markdown formatting the AI might add
+        const cleanMd = s => s.replace(/\*{1,2}/g, '').replace(/_{1,2}/g, '').replace(/`/g, '');
+        result[i] = { ...result[i], front: cleanMd(newFront), back: cleanMd(newBack) };
       }
     } catch (err) {
       console.warn('AI correction card ' + (i + 1) + ' failed:', err);
