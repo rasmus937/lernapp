@@ -585,9 +585,9 @@ function autoCorrectLatinOCR(word) {
 
   let w = word;
 
-  // Rule 1: Final 'd' → 'o' for words >4 chars
+  // Rule 1: Final 'd' → 'o' for words >3 chars
   // Latin 1st person (-o) is extremely common; final -d is rare for longer words
-  if (w.length > 4 && w.endsWith('d') && !LATIN_D_ENDINGS.has(w)) {
+  if (w.length > 3 && w.endsWith('d') && !LATIN_D_ENDINGS.has(w)) {
     w = w.slice(0, -1) + 'o';
   }
 
