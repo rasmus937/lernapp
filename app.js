@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 
 let currentView = 'dashboard';
 let currentDeckId = null;

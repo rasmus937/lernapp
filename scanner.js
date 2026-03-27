@@ -558,14 +558,6 @@ function cleanParsedCards(cards) {
     steps: card.steps ? card.steps.map(cleanCardText) : card.steps
   })).filter(c => c.front.length > 1);
 
-  // Grammar-aware correction for Latin entries
-  if (isLatin) {
-    result = result.map(card => ({
-      ...card,
-      front: correctByGrammar(card.front)
-    }));
-  }
-
   return result;
 }
 
@@ -784,7 +776,7 @@ function cleanCardText(text) {
     .trim();
 }
 
-// === Ollama OCR Correction ===
+// === Ollama OCR Correction (per card) ===
 
 async function correctCardsWithOllama(cards, onProgress) {
   if (cards.length === 0) return null;
@@ -792,75 +784,50 @@ async function correctCardsWithOllama(cards, onProgress) {
   const config = await getAiConfig();
   if (!config) return null;
 
-  const BATCH_SIZE = 20;
   const result = [...cards];
-  const totalBatches = Math.ceil(Math.min(cards.length, 60) / BATCH_SIZE);
+  const total = Math.min(cards.length, 60);
 
-  for (let batch = 0; batch < totalBatches; batch++) {
-    const start = batch * BATCH_SIZE;
-    const end = Math.min(start + BATCH_SIZE, cards.length, 60);
-    const batchCards = cards.slice(start, end);
+  for (let i = 0; i < total; i++) {
+    if (onProgress) onProgress(i + 1, total);
+    const card = cards[i];
 
-    if (onProgress) onProgress(batch + 1, totalBatches);
+    const prompt = `Vokabelkarte aus OCR-Scan. Prüfe und korrigiere mit minimalen Änderungen.
 
-    const cardList = batchCards.map((c, i) =>
-      `${i + 1}. ${c.front} | ${c.back}`
-    ).join('\n');
+Vorderseite (Latein): ${card.front}
+Rückseite (Deutsch): ${card.back}
 
-    const prompt = `Du korrigierst OCR-Fehler in lateinischen Vokabelkarten. Du verstehst lateinische Grammatik und erkennst falsche Wortformen im Kontext.
+1. Ist Latein/Deutsch richtig zugeordnet? Falls nicht, tausche die Seiten.
+2. Sind die lateinischen Wortformen korrekt? Korrigiere nur einzelne falsche Zeichen (OCR-Fehler wie d statt o, fehlende Buchstaben). Ändere so wenig wie möglich.
+3. Ist die deutsche Übersetzung korrekt geschrieben? Fehlende Umlaute ergänzen.
 
-EINTRAGSTYPEN:
-- Nomen: "nominativ, genitiv [m/f/n]" → z.B. "iudicium, iudicii n"
-- Verb: "infinitiv, 1.Person, perfekt, supinum" → z.B. "ducere, duco, duxi, ductum"
-- Adjektiv: "m, f, n; Gen. form" → z.B. "facilis, facilis, facile; Gen. facilis"
-
-REGELN:
-1. Prüfe ob jede Wortform grammatisch zum Eintragstyp passt:
-   - Genitiv eines Nomens muss eine gültige Genitiv-Endung haben (-ae, -i, -is, -us, -ei)
-   - 1. Person Präsens endet auf -o oder -or
-   - Perfekt endet auf -i, -vi, -ui, -si, -xi
-   - Supinum endet auf -um, -tum, -sum
-2. Korrigiere OCR-Zeichenfehler (d↔o, l↔I↔1, rn↔m, u↔a, &→e, fehlende Buchstaben)
-3. Korrigiere falsche Wortformen die zwar existieren aber nicht zur Position passen
-   - "iudicit" als Genitiv → "iudicii" (iudicit ist Verb, aber hier wird Genitiv erwartet)
-   - "dco" als 1. Person → "duco" (fehlender Buchstabe)
-4. Ändere NICHT Anzahl, Reihenfolge oder Struktur der Formen
-5. Wenn ein Eintrag korrekt ist, lass ihn UNVERÄNDERT
-6. Korrigiere deutsche Übersetzungen bei fehlenden Umlauten (Konig→König)
-
-Gib NUR ein JSON-Array zurück: [{"front":"latein","back":"deutsch"},...]
-Gleiche Reihenfolge und Anzahl wie die Eingabe.
-
-${cardList}`;
+Antworte NUR mit JSON: {"front":"...","back":"..."}
+Wenn alles korrekt ist, gib die Karte unverändert zurück.`;
 
     try {
       const content = await aiChat([{ role: 'user', content: prompt }]);
 
       let jsonStr = null;
-      const codeBlock = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      const codeBlock = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
       if (codeBlock) {
         jsonStr = codeBlock[1];
       } else {
-        const arrayMatch = content.match(/\[[\s\S]*\]/);
-        if (arrayMatch) jsonStr = arrayMatch[0];
+        const objMatch = content.match(/\{[\s\S]*\}/);
+        if (objMatch) jsonStr = objMatch[0];
       }
       if (!jsonStr) continue;
 
-      const corrected = JSON.parse(jsonStr);
-      if (!Array.isArray(corrected)) continue;
+      const fix = JSON.parse(jsonStr);
+      if (!fix || typeof fix !== 'object') continue;
 
-      for (let i = 0; i < batchCards.length; i++) {
-        const fix = corrected[i];
-        if (!fix || typeof fix !== 'object') continue;
-        const idx = start + i;
-        result[idx] = {
-          ...result[idx],
-          front: (typeof fix.front === 'string' && fix.front.trim()) ? fix.front.trim().slice(0, 500) : result[idx].front,
-          back: (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : result[idx].back
-        };
+      // Only accept if the fix doesn't change too much (safety check)
+      const newFront = (typeof fix.front === 'string' && fix.front.trim()) ? fix.front.trim().slice(0, 500) : null;
+      const newBack = (typeof fix.back === 'string' && fix.back.trim()) ? fix.back.trim().slice(0, 2000) : null;
+
+      if (newFront && newBack) {
+        result[i] = { ...result[i], front: newFront, back: newBack };
       }
     } catch (err) {
-      console.warn('AI correction batch ' + (batch + 1) + ' failed:', err);
+      console.warn('AI correction card ' + (i + 1) + ' failed:', err);
     }
   }
 
