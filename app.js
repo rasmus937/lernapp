@@ -803,7 +803,7 @@ function showNextCard() {
     clozeInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const btn = clozeInput.closest('.view').querySelector('[onclick^="checkClozeAnswer"]');
+        const btn = document.querySelector('[data-action="check-cloze"]');
         if (btn) btn.click();
       }
     });
@@ -853,10 +853,10 @@ function flipCard() {
     const intervals = previewIntervals(item.review);
     document.getElementById('rating-buttons').classList.remove('hidden');
     document.getElementById('rating-buttons').innerHTML = `
-      <button class="rating-btn again" onclick="rateAndNext(0)">Nochmal<br><span style="font-weight:400; font-size:11px">${intervals.again}</span></button>
-      <button class="rating-btn hard" onclick="rateAndNext(3)">Schwer<br><span style="font-weight:400; font-size:11px">${intervals.hard}</span></button>
-      <button class="rating-btn good" onclick="rateAndNext(4)">Gut<br><span style="font-weight:400; font-size:11px">${intervals.good}</span></button>
-      <button class="rating-btn easy" onclick="rateAndNext(5)">Leicht<br><span style="font-weight:400; font-size:11px">${intervals.easy}</span></button>
+      <button class="rating-btn again" data-action="rate" data-quality="0">Nochmal<br><span style="font-weight:400; font-size:11px">${intervals.again}</span></button>
+      <button class="rating-btn hard" data-action="rate" data-quality="3">Schwer<br><span style="font-weight:400; font-size:11px">${intervals.hard}</span></button>
+      <button class="rating-btn good" data-action="rate" data-quality="4">Gut<br><span style="font-weight:400; font-size:11px">${intervals.good}</span></button>
+      <button class="rating-btn easy" data-action="rate" data-quality="5">Leicht<br><span style="font-weight:400; font-size:11px">${intervals.easy}</span></button>
     `;
   }
 }
@@ -865,6 +865,29 @@ async function rateAndNext(quality) {
   await rateCard(quality);
   showNextCard();
 }
+
+// === Event delegation for learn interactions (CSP-safe, no inline onclick) ===
+
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-action]');
+  if (!target) return;
+
+  const action = target.dataset.action;
+
+  if (action === 'flip') {
+    flipCard();
+  } else if (action === 'rate') {
+    rateAndNext(parseInt(target.dataset.quality));
+  } else if (action === 'mc-answer') {
+    checkMCAnswer(target);
+  } else if (action === 'check-type') {
+    checkTypeAnswer(target.dataset.answer);
+  } else if (action === 'check-sort') {
+    checkSortOrder();
+  } else if (action === 'check-cloze') {
+    checkClozeAnswer(target.dataset.answer);
+  }
+});
 
 // === Multiple Choice interaction ===
 

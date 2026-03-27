@@ -98,7 +98,7 @@ function renderFlashcard(card) {
     : card.back;
 
   return `
-    <div class="flashcard" id="flashcard" onclick="flipCard()">
+    <div class="flashcard" id="flashcard" data-action="flip">
       <div class="flashcard-inner">
         <div class="flashcard-face flashcard-front">${escapeHtml(front)}</div>
         <div class="flashcard-face flashcard-back" style="white-space:pre-line">${escapeHtml(back)}</div>
@@ -133,7 +133,7 @@ function renderMultipleChoice(card, allCards) {
       ${options.map((opt, i) => `
         <button class="btn btn-secondary btn-full mb-8" style="text-align:left; padding:16px;"
                 data-answer="${escapeHtml(opt)}" data-correct="${escapeHtml(correctAnswer)}"
-                onclick="checkMCAnswer(this)"
+                data-action="mc-answer"
                 ${opt === '—' ? 'disabled' : ''}>
           ${escapeHtml(opt)}
         </button>
@@ -151,7 +151,7 @@ function renderTypeAnswer(card) {
       <input type="text" class="form-input" id="type-input" placeholder="Deine Antwort..."
              style="font-size:18px; text-align:center;" autocomplete="off">
     </div>
-    <button class="btn btn-primary btn-full mt-8" id="btn-check-type" onclick="checkTypeAnswer('${escapeAttr(card.back)}')">
+    <button class="btn btn-primary btn-full mt-8" id="btn-check-type" data-action="check-type" data-answer="${escapeAttr(card.back)}">
       Prüfen
     </button>
     <div id="type-feedback" class="hidden mt-16"></div>
@@ -179,7 +179,7 @@ function renderSortSteps(card) {
         </div>
       `).join('')}
     </div>
-    <button class="btn btn-primary btn-full mt-16" onclick="checkSortOrder()">Prüfen</button>
+    <button class="btn btn-primary btn-full mt-16" data-action="check-sort">Prüfen</button>
     <div id="sort-feedback" class="hidden mt-16"></div>
   `;
 }
@@ -206,7 +206,7 @@ function renderCloze(card) {
         <input type="text" class="form-input" id="cloze-input" placeholder="Fehlenden Schritt eingeben..."
                style="font-size:16px; text-align:center;" autocomplete="off">
       </div>
-      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Prüfen</button>
+      <button class="btn btn-primary btn-full mt-8" data-action="check-cloze" data-answer="${escapeAttr(answer)}">Prüfen</button>
       <div id="cloze-feedback" class="hidden mt-16"></div>
     `;
   }
@@ -232,7 +232,7 @@ function renderCloze(card) {
         <input type="text" class="form-input" id="cloze-input" placeholder="Fehlendes Wort eingeben..."
                style="font-size:16px; text-align:center;" autocomplete="off">
       </div>
-      <button class="btn btn-primary btn-full mt-8" onclick="checkClozeAnswer('${escapeAttr(answer)}')">Prüfen</button>
+      <button class="btn btn-primary btn-full mt-8" data-action="check-cloze" data-answer="${escapeAttr(answer)}">Prüfen</button>
       <div id="cloze-feedback" class="hidden mt-16"></div>
     `;
   }
