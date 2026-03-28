@@ -348,6 +348,10 @@ html, body {
   margin-bottom: 10px;
   cursor: pointer;
   transition: border-color 0.2s;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .deck-item:active {

@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.15.1';
+const APP_VERSION = '1.16.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -161,6 +161,18 @@ async function initApp() {
 
   // Header back button
   document.getElementById('header-back').addEventListener('click', navigateBack);
+
+  // System/browser back button support
+  window.addEventListener('popstate', (e) => {
+    if (e.state && e.state.view) {
+      currentFolderId = e.state.folderId || null;
+      navigateTo(e.state.view, { _fromPopstate: true });
+    } else {
+      navigateBack();
+    }
+  });
+  // Initialize history state
+  history.replaceState({ view: 'dashboard', folderId: null }, '', '');
 
   // Dashboard
   document.getElementById('btn-start-learn').addEventListener('click', startGlobalLearn);
@@ -363,6 +375,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 function navigateTo(view, options = {}) {
   currentView = view;
 
+  // Push history state so system back button works (skip if triggered by popstate)
+  if (!options._fromPopstate) {
+    history.pushState({ view, folderId: currentFolderId || null }, '', '');
+  }
+
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
 
@@ -389,10 +406,10 @@ function navigateTo(view, options = {}) {
   };
   document.getElementById('header-title').textContent = titles[view] || 'LernApp';
 
-  // Show/hide back button for sub-views
+  // Show/hide back button for sub-views and folder navigation
   const backBtn = document.getElementById('header-back');
   const subViews = ['deck-detail', 'card-editor', 'learn', 'summary'];
-  if (subViews.includes(view)) {
+  if (subViews.includes(view) || (view === 'decks' && currentFolderId)) {
     backBtn.classList.remove('hidden');
   } else {
     backBtn.classList.add('hidden');
@@ -418,7 +435,17 @@ function navigateBack() {
     navigateTo('deck-detail', { title: '' });
   } else if (currentView === 'deck-detail') {
     navigateTo('decks');
-  } else {
+  } else if (currentView === 'decks' && currentFolderId) {
+    // Navigate up the folder hierarchy
+    (async () => {
+      const folder = await getFolder(currentFolderId);
+      currentFolderId = folder?.parentId || null;
+      refreshDeckList();
+      renderBreadcrumb();
+    })();
+  } else if (currentView === 'learn' || currentView === 'summary') {
+    navigateTo('dashboard');
+  } else if (currentView !== 'dashboard') {
     navigateTo('dashboard');
   }
 }
@@ -798,7 +825,7 @@ function initLongPress() {
         cancelBtn.removeEventListener('click', copyHandler);
       };
       cancelBtn.addEventListener('click', copyHandler, { once: true });
-    }, 2500);
+    }, 1800);
   });
 
   container.addEventListener('pointerup', () => {
