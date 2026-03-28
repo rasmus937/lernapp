@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -9,6 +9,10 @@ let editingFolderId = null; // folder being edited
 let editingCardId = null;
 let confirmCallback = null;
 let _appPin = null; // PIN in memory for encrypting new API keys
+
+// Clipboard for move/copy in library
+let clipboard = null; // { action: 'copy'|'cut', type: 'folder'|'deck', id: string, name: string }
+let selectedItemEl = null; // currently selected DOM element
 
 // === Lock Screen ===
 
@@ -179,6 +183,13 @@ async function initApp() {
   document.getElementById('btn-edit-deck').addEventListener('click', () => openDeckModal(currentDeckId));
   document.getElementById('btn-learn-deck').addEventListener('click', startDeckLearn);
   document.getElementById('btn-delete-deck').addEventListener('click', confirmDeleteDeck);
+
+  // Vorwissen
+  document.getElementById('btn-vorwissen-skip').addEventListener('click', () => startWithVorwissen(0));
+
+  // Clipboard paste bar
+  document.getElementById('btn-clipboard-paste').addEventListener('click', pasteClipboard);
+  document.getElementById('btn-clipboard-cancel').addEventListener('click', clearClipboard);
 
   // AI Generate
   document.getElementById('btn-ai-generate').addEventListener('click', toggleAIPanel);
@@ -528,6 +539,7 @@ async function refreshDeckList() {
     `;
   }
   container.innerHTML = html;
+  initLongPress();
 }
 
 async function renderBreadcrumb() {
@@ -620,6 +632,220 @@ async function confirmDeleteFolder(folderId) {
     }
   );
 }
+
+// === Clipboard (Move/Copy in Library) ===
+
+function selectItem(el) {
+  // Deselect previous
+  if (selectedItemEl) selectedItemEl.style.outline = '';
+  selectedItemEl = el;
+  if (el) el.style.outline = '2px solid var(--accent)';
+}
+
+function clearClipboard() {
+  clipboard = null;
+  selectedItemEl = null;
+  document.querySelectorAll('.deck-item').forEach(el => el.style.outline = '');
+  updateClipboardBar();
+}
+
+function setClipboard(action, type, id, name) {
+  clipboard = { action, type, id, name };
+  updateClipboardBar();
+  showToast(`${name} ${action === 'cut' ? 'ausgeschnitten' : 'kopiert'}`);
+}
+
+function updateClipboardBar() {
+  const bar = document.getElementById('clipboard-bar');
+  if (!clipboard) {
+    bar.classList.add('hidden');
+    return;
+  }
+  const icon = clipboard.action === 'cut' ? '✂️' : '📋';
+  const actionLabel = clipboard.action === 'cut' ? 'Verschieben' : 'Kopieren';
+  document.getElementById('clipboard-label').textContent =
+    `${icon} ${actionLabel}: ${clipboard.name}`;
+  bar.classList.remove('hidden');
+}
+
+async function pasteClipboard() {
+  if (!clipboard) return;
+  const { action, type, id } = clipboard;
+
+  try {
+    if (type === 'deck') {
+      if (action === 'cut') {
+        await updateDeck(id, { folderId: currentFolderId });
+      } else {
+        // Copy: duplicate the deck and all its cards
+        const deck = await getDeck(id);
+        if (!deck) throw new Error('Deck nicht gefunden');
+        const newDeck = await createDeck({
+          name: deck.name + ' (Kopie)',
+          type: deck.type,
+          tags: deck.tags,
+          folderId: currentFolderId
+        });
+        const cards = await getCardsByDeck(id);
+        for (const card of cards) {
+          await createCard({
+            deckId: newDeck.id,
+            type: card.type,
+            front: card.front,
+            back: card.back,
+            steps: card.steps,
+            layer: card.layer,
+            tags: card.tags
+          });
+        }
+      }
+    } else if (type === 'folder') {
+      if (action === 'cut') {
+        // Check: can't move a folder into itself or its subfolder
+        let checkId = currentFolderId;
+        while (checkId) {
+          if (checkId === id) {
+            showToast('Ordner kann nicht in sich selbst verschoben werden!');
+            return;
+          }
+          const f = await getFolder(checkId);
+          checkId = f?.parentId || null;
+        }
+        await updateFolder(id, { parentId: currentFolderId });
+      } else {
+        // Copy folder (without subfolders, just the folder itself)
+        const folder = await getFolder(id);
+        if (!folder) throw new Error('Ordner nicht gefunden');
+        await createFolder({ name: folder.name + ' (Kopie)', parentId: currentFolderId });
+      }
+    }
+
+    showToast(action === 'cut' ? 'Verschoben!' : 'Kopiert!');
+    clearClipboard();
+    refreshDeckList();
+  } catch (err) {
+    showToast('Fehler: ' + err.message);
+  }
+}
+
+// Long-press handler for touch (select + show context)
+let longPressTimer = null;
+
+function initLongPress() {
+  const container = document.getElementById('deck-list');
+  if (!container) return;
+
+  container.addEventListener('pointerdown', (e) => {
+    const item = e.target.closest('.deck-item');
+    if (!item) return;
+    const action = item.dataset.action;
+    const id = item.dataset.id;
+    if (!id) return;
+
+    longPressTimer = setTimeout(async () => {
+      longPressTimer = null;
+      e.preventDefault();
+      selectItem(item);
+
+      const type = action === 'open-folder' ? 'folder' : 'deck';
+      const name = type === 'folder'
+        ? (await getFolder(id))?.name
+        : (await getDeck(id))?.name;
+
+      showConfirm(
+        `${type === 'folder' ? 'Ordner' : 'Deck'}: ${name}`,
+        'Was möchtest du tun?',
+        () => { setClipboard('cut', type, id, name); closeConfirm(); },
+        'Verschieben',
+        'btn btn-primary'
+      );
+      // Hijack the cancel button temporarily for copy
+      const cancelBtn = document.getElementById('btn-confirm-no');
+      const origText = cancelBtn.textContent;
+      cancelBtn.textContent = 'Kopieren';
+      const copyHandler = () => {
+        setClipboard('copy', type, id, name);
+        closeConfirm();
+        cancelBtn.textContent = origText;
+        cancelBtn.removeEventListener('click', copyHandler);
+      };
+      cancelBtn.addEventListener('click', copyHandler, { once: true });
+    }, 600);
+  });
+
+  container.addEventListener('pointerup', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+  container.addEventListener('pointerleave', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+  container.addEventListener('pointermove', (e) => {
+    if (longPressTimer && (Math.abs(e.movementX) > 5 || Math.abs(e.movementY) > 5)) {
+      clearTimeout(longPressTimer); longPressTimer = null;
+    }
+  });
+}
+
+// Keyboard shortcuts for library (Ctrl+C, Ctrl+X, Ctrl+V, Escape)
+document.addEventListener('keydown', (e) => {
+  if (currentView !== 'decks') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  if (e.key === 'Escape') {
+    clearClipboard();
+    return;
+  }
+
+  // Ctrl+V: paste
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v' && clipboard) {
+    e.preventDefault();
+    pasteClipboard();
+    return;
+  }
+
+  // Ctrl+C or Ctrl+X: need a selected item
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'x')) {
+    // Find currently focused/hovered item
+    const hovered = document.querySelector('.deck-item:hover') || selectedItemEl;
+    if (!hovered) { showToast('Kein Element ausgewählt'); return; }
+
+    e.preventDefault();
+    const id = hovered.dataset.id;
+    const action = hovered.dataset.action;
+    const type = action === 'open-folder' ? 'folder' : 'deck';
+
+    (async () => {
+      const name = type === 'folder'
+        ? (await getFolder(id))?.name
+        : (await getDeck(id))?.name;
+
+      selectItem(hovered);
+
+      if (e.key === 'x') {
+        setClipboard('cut', type, id, name);
+      } else {
+        // Ctrl+C: ask copy or cut
+        showConfirm(
+          `${name}`,
+          'Möchtest du duplizieren (Kopie erstellen) oder ausschneiden (verschieben)?',
+          () => { setClipboard('copy', type, id, name); closeConfirm(); },
+          'Duplizieren',
+          'btn btn-primary'
+        );
+        const cancelBtn = document.getElementById('btn-confirm-no');
+        const origText = cancelBtn.textContent;
+        cancelBtn.textContent = 'Ausschneiden';
+        const cutHandler = () => {
+          setClipboard('cut', type, id, name);
+          closeConfirm();
+          cancelBtn.textContent = origText;
+          cancelBtn.removeEventListener('click', cutHandler);
+        };
+        cancelBtn.addEventListener('click', cutHandler, { once: true });
+      }
+    })();
+  }
+});
 
 // === Deck Modal ===
 
@@ -917,7 +1143,29 @@ async function startLearnSession(dueCards, deckId = null) {
   const settings = await getSettings();
   const dailyGoal = settings.dailyGoal || 20;
   const limited = dueCards.slice(0, dailyGoal);
+
+  // Check if there are layered process cards → show Vorwissen dialog
+  const hasLayers = limited.some(item => item.card.layer != null);
+  if (hasLayers) {
+    window._pendingLearnCards = limited;
+    window._pendingLearnDeckId = deckId;
+    document.getElementById('modal-vorwissen').classList.add('active');
+    return;
+  }
+
   initSession(limited, deckId);
+  navigateTo('learn');
+  showNextCard();
+}
+
+function startWithVorwissen(minLayer) {
+  document.getElementById('modal-vorwissen').classList.remove('active');
+  const cards = window._pendingLearnCards;
+  const deckId = window._pendingLearnDeckId;
+  window._pendingLearnCards = null;
+  window._pendingLearnDeckId = null;
+  if (!cards) return;
+  initSession(cards, deckId, minLayer);
   navigateTo('learn');
   showNextCard();
 }
@@ -1047,6 +1295,8 @@ document.addEventListener('click', (e) => {
     target.closest('.card').remove();
   } else if (action === 'save-ai-cards') {
     saveAICards();
+  } else if (action === 'vorwissen') {
+    startWithVorwissen(parseInt(target.dataset.level));
   }
 });
 
@@ -1320,10 +1570,14 @@ async function runAIGenerate() {
 
     status.innerHTML = `${cards.length} Karten generiert. Prüfen und speichern:`;
 
+    const layerLabels = { 0: 'Überblick', 1: 'Phase', 2: 'Detail' };
     preview.innerHTML = cards.map((card, i) => `
       <div class="card mb-8" data-ai-index="${i}">
         <div class="flex-between">
-          <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
+          <div class="flex gap-4">
+            <span class="tag tag-accent">${card.type === 'vocab' ? 'Vokabel' : card.type === 'process' ? 'Prozess' : 'Begriff'}</span>
+            ${card.layer != null ? `<span class="tag" style="background:var(--bg-input); font-size:10px">L${card.layer}: ${layerLabels[card.layer] || ''}</span>` : ''}
+          </div>
           <button class="btn btn-secondary" style="padding:2px 8px; font-size:11px"
                   data-action="remove-ai-card">✕</button>
         </div>
@@ -1364,6 +1618,7 @@ async function saveAICards() {
       front: card.front,
       back: card.back || '',
       steps: card.steps || null,
+      layer: card.layer != null ? card.layer : null,
       tags: ['ki-generiert']
     });
     count++;

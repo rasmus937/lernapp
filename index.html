@@ -105,6 +105,13 @@
         </div>
       </section>
 
+      <!-- Clipboard Paste Bar (floating) -->
+      <div id="clipboard-bar" class="hidden" style="position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:100; background:var(--accent); color:#000; padding:10px 20px; border-radius:var(--radius); display:flex; align-items:center; gap:12px; box-shadow:0 4px 16px rgba(0,0,0,0.3); max-width:90%;">
+        <span id="clipboard-label" style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+        <button class="btn" id="btn-clipboard-paste" style="background:#000; color:#fff; padding:6px 14px; font-size:12px; white-space:nowrap;">Hier einfügen</button>
+        <button class="btn" id="btn-clipboard-cancel" style="background:transparent; color:#000; padding:6px 8px; font-size:14px;">✕</button>
+      </div>
+
       <!-- Deck Detail View -->
       <section id="view-deck-detail" class="view">
         <div class="flex-between mb-16">
@@ -539,6 +546,29 @@
             <button type="submit" class="btn btn-primary">Speichern</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Prior Knowledge Modal -->
+    <div class="modal-overlay" id="modal-vorwissen">
+      <div class="modal">
+        <div class="modal-title">Wie viel weißt du bereits?</div>
+        <p class="text-dim text-sm" style="margin-bottom:16px">Dein Vorwissen bestimmt, auf welcher Ebene du startest.</p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn btn-primary btn-full" data-action="vorwissen" data-level="0">
+            <strong>Kein Vorwissen</strong><br>
+            <span class="text-sm" style="font-weight:400; opacity:0.8">Starte mit dem Überblick</span>
+          </button>
+          <button class="btn btn-secondary btn-full" data-action="vorwissen" data-level="1">
+            <strong>Grundlagen bekannt</strong><br>
+            <span class="text-sm" style="font-weight:400; opacity:0.8">Überspringe den Überblick, starte mit den Phasen</span>
+          </button>
+          <button class="btn btn-secondary btn-full" data-action="vorwissen" data-level="2">
+            <strong>Fortgeschritten</strong><br>
+            <span class="text-sm" style="font-weight:400; opacity:0.8">Nur Detailwissen abfragen</span>
+          </button>
+        </div>
+        <button class="btn btn-secondary btn-full mt-16" id="btn-vorwissen-skip" style="font-size:13px">Überspringen (alles lernen)</button>
       </div>
     </div>
 

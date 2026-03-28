@@ -236,7 +236,7 @@ async function getDeck(id) {
 
 // === Card Operations ===
 
-async function createCard({ deckId, type = 'vocab', front = '', back = '', steps = null, image = null, tags = [] }) {
+async function createCard({ deckId, type = 'vocab', front = '', back = '', steps = null, image = null, tags = [], layer = null }) {
   const card = {
     id: uuid(),
     deckId,
@@ -246,6 +246,7 @@ async function createCard({ deckId, type = 'vocab', front = '', back = '', steps
     steps,
     image,
     tags,
+    layer,
     created: Date.now()
   };
   await dbPut('cards', card);

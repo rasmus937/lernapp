@@ -2,11 +2,23 @@
 
 let session = null;
 
-function initSession(dueCards, deckId = null) {
-  // Shuffle for interleaving
-  const shuffled = [...dueCards].sort(() => Math.random() - 0.5);
+function initSession(dueCards, deckId = null, minLayer = 0) {
+  // Separate process cards with layers from the rest
+  const layered = dueCards.filter(item => item.card.layer != null && item.card.layer >= minLayer);
+  const nonLayered = dueCards.filter(item => item.card.layer == null);
+
+  // Sort layered cards by layer (Überblick → Phase → Detail), shuffle within each layer
+  const sortedLayered = [];
+  for (let l = minLayer; l <= 2; l++) {
+    const group = layered.filter(item => item.card.layer === l).sort(() => Math.random() - 0.5);
+    sortedLayered.push(...group);
+  }
+
+  // Non-layered cards get shuffled and appended
+  const shuffledRest = nonLayered.sort(() => Math.random() - 0.5);
+
   session = {
-    cards: shuffled,
+    cards: [...sortedLayered, ...shuffledRest],
     deckId,
     currentIndex: 0,
     correct: 0,

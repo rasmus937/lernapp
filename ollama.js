@@ -185,8 +185,15 @@ async function generateCardsFromTopic(topic, type = 'mixed') {
   const typeInstruction = {
     vocab: 'Erstelle Vokabelkarten mit "front" (Fremdsprache) und "back" (Deutsch).',
     terms: 'Erstelle Fachbegriff-Karten mit "front" (Begriff) und "back" (Definition).',
-    process: 'Erstelle eine Prozess-Karte mit "front" (Prozessname), "steps" (Array der Schritte in richtiger Reihenfolge) und "back" (Zusammenfassung).',
-    mixed: 'Erstelle eine Mischung aus Fachbegriff-Karten ("type":"term") und falls passend eine Prozess-Karte ("type":"process"). Fachbegriffe haben "front" und "back". Prozesse haben "front", "steps" (Array) und "back".'
+    process: `Erstelle hierarchische Prozess-Karten vom Groben ins Detail.
+
+Strukturiere in 3 Ebenen:
+- "layer": 0 = ÜBERBLICK: 1 Karte mit den Hauptphasen als Schritte (z.B. "Calvin-Zyklus" → ["Fixierung", "Reduktion", "Regeneration"])
+- "layer": 1 = PHASEN: Je 1 Karte pro Hauptphase mit deren Teilschritten (z.B. "Fixierung (Calvin-Zyklus)" → ["CO2 bindet an RuBisCO", "C6-Körper entsteht", "Zerfall in 2x 3-PG"])
+- "layer": 2 = DETAILS: Karten zu wichtigen Einzelreaktionen/Molekülen (z.B. "RuBisCO-Reaktion" → ["CO2 + Ribulose-1,5-bisphosphat", "Katalyse durch RuBisCO", "Produkt: 2x 3-Phosphoglycerat"])
+
+Jede Karte hat: { "type": "process", "layer": 0|1|2, "front": "...", "steps": [...], "back": "Zusammenfassung" }`,
+    mixed: 'Erstelle eine Mischung aus Fachbegriff-Karten ("type":"term") und falls passend Prozess-Karten ("type":"process"). Fachbegriffe haben "front" und "back". Prozesse haben "front", "steps" (Array), "back" und optional "layer" (0=Überblick, 1=Phase, 2=Detail).'
   }[type] || typeInstruction.mixed;
 
   const prompt = `Du bist ein Lernkarten-Generator. Erstelle Lernkarten zum Thema: "${topic}"
@@ -196,9 +203,9 @@ ${typeInstruction}
 WICHTIG:
 - Alle Inhalte auf Deutsch
 - Gib NUR ein JSON-Array zurück, kein anderer Text
-- Jedes Element hat: { "type": "vocab"|"term"|"process", "front": "...", "back": "...", "steps": [...] }
+- Jedes Element hat: { "type": "vocab"|"term"|"process", "front": "...", "back": "...", "steps": [...], "layer": 0|1|2 }
 - Bei "process": "steps" ist ein Array von Strings in der richtigen Reihenfolge
-- Erstelle 5-15 sinnvolle Karten
+- Erstelle 8-20 sinnvolle Karten
 - Sei praezise und fachlich korrekt`;
 
   const content = await aiChat([{ role: 'user', content: prompt }]);
@@ -222,6 +229,7 @@ WICHTIG:
     type: VALID_TYPES.includes(c.type) ? c.type : 'term',
     front: String(c.front).slice(0, 500).trim(),
     back: String(c.back || '').slice(0, 2000).trim(),
-    steps: Array.isArray(c.steps) ? c.steps.slice(0, 30).map(s => String(s).slice(0, 500).trim()) : null
+    steps: Array.isArray(c.steps) ? c.steps.slice(0, 30).map(s => String(s).slice(0, 500).trim()) : null,
+    layer: typeof c.layer === 'number' ? Math.min(2, Math.max(0, c.layer)) : null
   }));
 }
