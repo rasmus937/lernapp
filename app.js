@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.15.1';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -434,6 +434,8 @@ async function refreshDashboard() {
   document.getElementById('dash-due').textContent = dueCards.length;
   document.getElementById('dash-streak').textContent = streak;
   document.getElementById('dash-xp').textContent = stats.xpEarned;
+  const dashVer = document.getElementById('dash-version');
+  if (dashVer) dashVer.textContent = 'v' + APP_VERSION;
 
   // Disable learn button if nothing due
   const learnBtn = document.getElementById('btn-start-learn');
