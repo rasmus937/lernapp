@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -275,6 +275,24 @@ async function initApp() {
   document.getElementById('btn-confirm-yes').addEventListener('click', () => {
     if (confirmCallback) confirmCallback();
     closeConfirm();
+  });
+
+  // Close modals on overlay click (tap into empty space)
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.classList.remove('active');
+        // Clean up specific modal state
+        if (overlay.id === 'modal-confirm') closeConfirm();
+        else if (overlay.id === 'modal-deck') closeDeckModal();
+        else if (overlay.id === 'modal-folder') closeFolderModal();
+        else if (overlay.id === 'modal-vorwissen') {
+          overlay.classList.remove('active');
+          window._pendingLearnCards = null;
+          window._pendingLearnDeckId = null;
+        }
+      }
+    });
   });
 
   // Scanner
@@ -770,7 +788,7 @@ function initLongPress() {
         cancelBtn.removeEventListener('click', copyHandler);
       };
       cancelBtn.addEventListener('click', copyHandler, { once: true });
-    }, 600);
+    }, 1200);
   });
 
   container.addEventListener('pointerup', () => {

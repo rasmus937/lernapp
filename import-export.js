@@ -55,36 +55,10 @@ async function decryptWithPin(encryptedBase64, pin) {
 // Session PIN: cached in memory so auto-backup can encrypt without re-asking
 let _sessionPin = null;
 
-// Auto-backup: saves all data to localStorage after each significant change
+// Auto-backup removed – IndexedDB persists across cache clears and app updates.
+// Manual export via JSON is still available.
 async function autoBackup() {
-  try {
-    const enabled = localStorage.getItem('lernapp-auto-backup') !== 'false';
-    if (!enabled) return;
-
-    const rawSettings = await dbGet('settings', 'settings');
-    const settings = await getSettings();
-    const data = {
-      version: 2,
-      exported: new Date().toISOString(),
-      decks: await dbGetAll('decks'),
-      cards: await dbGetAll('cards'),
-      reviews: await dbGetAll('reviews'),
-      stats: await dbGetAll('stats'),
-      settings: { ...settings, ollamaApiKey: '' }
-    };
-
-    // Include already-encrypted API key directly
-    if (rawSettings && rawSettings.encryptedOllamaApiKey) {
-      data.encryptedApiKey = rawSettings.encryptedOllamaApiKey;
-    }
-
-    localStorage.setItem('lernapp-backup', JSON.stringify(data));
-    localStorage.setItem('lernapp-backup-date', data.exported);
-    localStorage.setItem('lernapp-backup-count',
-      (data.decks.length) + ' Decks, ' + (data.cards.length) + ' Karten');
-  } catch (e) {
-    console.warn('Auto-backup failed:', e);
-  }
+  // No-op: IndexedDB is persistent, auto-backup to localStorage is unnecessary.
 }
 
 function getBackupInfo() {
@@ -122,8 +96,9 @@ async function exportAllData() {
   const rawSettings = await dbGet('settings', 'settings');
   const settings = await getSettings();
   const data = {
-    version: 2,
+    version: 3,
     exported: new Date().toISOString(),
+    folders: await dbGetAll('folders'),
     decks: await dbGetAll('decks'),
     cards: await dbGetAll('cards'),
     reviews: await dbGetAll('reviews'),
@@ -138,11 +113,30 @@ async function exportAllData() {
 
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  const filename = `lernapp-backup-${todayStr()}.json`;
 
+  // Try native file picker (allows user to choose save location)
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JSON-Datei', accept: { 'application/json': ['.json'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return; // user cancelled
+      // Fall through to legacy download
+    }
+  }
+
+  // Fallback: blob download (no location choice)
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `lernapp-backup-${todayStr()}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -159,8 +153,8 @@ function sanitizeObj(obj, allowedKeys) {
   return clean;
 }
 
-const DECK_KEYS = ['id', 'name', 'type', 'tags', 'created', 'updated'];
-const CARD_KEYS = ['id', 'deckId', 'type', 'front', 'back', 'steps', 'image', 'tags', 'created'];
+const DECK_KEYS = ['id', 'name', 'type', 'tags', 'folderId', 'created', 'updated'];
+const CARD_KEYS = ['id', 'deckId', 'type', 'front', 'back', 'steps', 'image', 'tags', 'layer', 'created'];
 const REVIEW_KEYS = ['cardId', 'interval', 'repetitions', 'easeFactor', 'nextReview', 'lastReview'];
 const STAT_KEYS = ['date', 'cardsReviewed', 'correct', 'wrong', 'xpEarned', 'streak'];
 const IMPORT_MAX_ITEMS = 10000;
@@ -179,6 +173,15 @@ async function importData(file) {
         }
         if (data.decks.length > IMPORT_MAX_ITEMS || data.cards.length > IMPORT_MAX_ITEMS) {
           throw new Error(`Zu viele Einträge (max. ${IMPORT_MAX_ITEMS})`);
+        }
+
+        // Import folders (sanitized)
+        const FOLDER_KEYS = ['id', 'name', 'parentId', 'created'];
+        if (Array.isArray(data.folders)) {
+          for (const folder of data.folders) {
+            const clean = sanitizeObj(folder, FOLDER_KEYS);
+            if (clean && clean.id && clean.name) await dbPut('folders', clean);
+          }
         }
 
         // Import decks (sanitized)

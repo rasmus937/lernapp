@@ -104,12 +104,25 @@ function endSession() {
 // === Render Helpers for Learn Modes ===
 
 function renderFlashcard(card) {
-  const front = card.type === 'process' ? card.front : card.front;
+  const front = card.front;
   const back = card.type === 'process'
     ? (card.steps || []).map((s, i) => `${i + 1}. ${s}`).join('\n')
     : card.back;
 
+  // Layer context for process cards
+  const layerLabels = { 0: 'Überblick', 1: 'Phase', 2: 'Detail' };
+  const layerTag = card.layer != null
+    ? `<div class="text-center mb-8"><span style="background:var(--bg-input); padding:3px 10px; border-radius:12px; font-size:11px; color:var(--text-dim);">${layerLabels[card.layer] || ''}</span></div>`
+    : '';
+
+  // YouTube recommendation for Layer 0 overview cards (helps newcomers)
+  const ytQuery = encodeURIComponent(card.front + ' erklärt');
+  const ytLink = card.layer === 0
+    ? `<div class="text-center mt-12"><a href="https://www.youtube.com/results?search_query=${ytQuery}" target="_blank" rel="noopener" style="color:var(--accent); font-size:13px; text-decoration:none;">▶ Video-Erklärung auf YouTube suchen</a></div>`
+    : '';
+
   return `
+    ${layerTag}
     <div class="flashcard" id="flashcard" data-action="flip">
       <div class="flashcard-inner">
         <div class="flashcard-face flashcard-front">${escapeHtml(front)}</div>
@@ -117,6 +130,7 @@ function renderFlashcard(card) {
       </div>
     </div>
     <p class="text-center text-dim mt-8 text-sm" id="flip-hint">Antippen zum Umdrehen</p>
+    ${ytLink}
     <div class="rating-buttons hidden" id="rating-buttons"></div>
   `;
 }
@@ -260,6 +274,8 @@ function chooseLernMode(card, review, allCards) {
 
   // Process cards: flashcard → sort → cloze
   if (type === 'process' && card.steps && card.steps.length >= 2) {
+    // Layer 0 (overview) always flashcard first few times to build the big picture
+    if (card.layer === 0 && review.repetitions < 2) return 'flashcard';
     if (review.repetitions === 0) return 'flashcard';
     if (review.repetitions < 3) return Math.random() < 0.5 ? 'sort' : 'flashcard';
     const r = Math.random();
