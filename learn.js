@@ -115,10 +115,10 @@ function renderFlashcard(card) {
     ? `<div class="text-center mb-8"><span style="background:var(--bg-input); padding:3px 10px; border-radius:12px; font-size:11px; color:var(--text-dim);">${layerLabels[card.layer] || ''}</span></div>`
     : '';
 
-  // YouTube recommendation for Layer 0 overview cards (helps newcomers)
+  // YouTube recommendation for process cards (especially helpful for newcomers)
   const ytQuery = encodeURIComponent(card.front + ' erklärt');
-  const ytLink = card.layer === 0
-    ? `<div class="text-center mt-12"><a href="https://www.youtube.com/results?search_query=${ytQuery}" target="_blank" rel="noopener" style="color:var(--accent); font-size:13px; text-decoration:none;">▶ Video-Erklärung auf YouTube suchen</a></div>`
+  const ytLink = (card.layer != null)
+    ? `<div class="text-center mt-12"><a href="https://www.youtube.com/results?search_query=${ytQuery}" target="_blank" rel="noopener" style="display:inline-block; background:var(--bg-input); color:var(--accent); font-size:14px; text-decoration:none; padding:8px 16px; border-radius:8px; border:1px solid var(--accent);">▶ Video-Erklärung auf YouTube suchen</a></div>`
     : '';
 
   return `
@@ -320,6 +320,9 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// === Math Rendering (KaTeX) ===
+// Called after card HTML is inserted into DOM to render LaTeX math expressions
 
 function escapeAttr(text) {
   if (!text) return '';

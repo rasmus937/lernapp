@@ -206,7 +206,8 @@ WICHTIG:
 - Jedes Element hat: { "type": "vocab"|"term"|"process", "front": "...", "back": "...", "steps": [...], "layer": 0|1|2 }
 - Bei "process": "steps" ist ein Array von Strings in der richtigen Reihenfolge
 - Erstelle 8-20 sinnvolle Karten
-- Sei praezise und fachlich korrekt`;
+- Sei praezise und fachlich korrekt
+- MATHEMATIK: Verwende LaTeX-Notation mit $...$ für Formeln. Beispiele: $x^2$, $\\frac{a}{b}$, $\\sqrt{x}$, $\\sum_{i=1}^{n}$, $CO_2$, $H_2O$. KEINE Unicode-Sonderzeichen wie ², ³, ₂ etc.`;
 
   const content = await aiChat([{ role: 'user', content: prompt }]);
 

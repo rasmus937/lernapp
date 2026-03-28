@@ -1,6 +1,6 @@
 // === LernApp – Main Application ===
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.15.0';
 
 let currentView = 'dashboard';
 let currentDeckId = null;
@@ -748,10 +748,15 @@ async function pasteClipboard() {
 
 // Long-press handler for touch (select + show context)
 let longPressTimer = null;
+let _longPressInitialized = false;
 
 function initLongPress() {
   const container = document.getElementById('deck-list');
   if (!container) return;
+
+  // Prevent stacking multiple listeners on repeated calls
+  if (_longPressInitialized) return;
+  _longPressInitialized = true;
 
   container.addEventListener('pointerdown', (e) => {
     const item = e.target.closest('.deck-item');
@@ -759,6 +764,9 @@ function initLongPress() {
     const action = item.dataset.action;
     const id = item.dataset.id;
     if (!id) return;
+
+    // Clear any previous timer
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
     longPressTimer = setTimeout(async () => {
       longPressTimer = null;
@@ -788,7 +796,7 @@ function initLongPress() {
         cancelBtn.removeEventListener('click', copyHandler);
       };
       cancelBtn.addEventListener('click', copyHandler, { once: true });
-    }, 1200);
+    }, 2500);
   });
 
   container.addEventListener('pointerup', () => {
@@ -801,6 +809,10 @@ function initLongPress() {
     if (longPressTimer && (Math.abs(e.movementX) > 5 || Math.abs(e.movementY) > 5)) {
       clearTimeout(longPressTimer); longPressTimer = null;
     }
+  });
+  // Cancel on context menu (native long-press on some devices)
+  container.addEventListener('contextmenu', (e) => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   });
 }
 
@@ -1202,6 +1214,21 @@ function showNextCard() {
 
   const content = document.getElementById('learn-content');
   content.innerHTML = renderLearnCard(item, session.cards);
+
+  // Render math expressions (KaTeX auto-render)
+  try {
+    if (typeof renderMathInElement === 'function') {
+      renderMathInElement(content, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true }
+        ],
+        throwOnError: false
+      });
+    }
+  } catch(e) { /* KaTeX not loaded yet */ }
 
   // Focus type input if present
   const typeInput = document.getElementById('type-input');
@@ -1606,6 +1633,21 @@ async function runAIGenerate() {
     `).join('') + `
       <button class="btn btn-success btn-full mt-8" data-action="save-ai-cards">Alle Karten speichern</button>
     `;
+
+    // Render math in preview
+    try {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(preview, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\(', right: '\\)', display: false },
+            { left: '\\[', right: '\\]', display: true }
+          ],
+          throwOnError: false
+        });
+      }
+    } catch(e) { /* KaTeX not loaded */ }
 
     // Store for saving
     window._aiGeneratedCards = cards;
